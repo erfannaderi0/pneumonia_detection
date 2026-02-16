@@ -228,22 +228,25 @@ if __name__ == "__main__":
     print("CHEST X-RAY DATASET REORGANIZATION")
     print("=" * 50)
     
-    # step 1: Analyze original
-    original_stats = analyze_dataset_structure()
-    
-    # step 2: Create stratified split
-    X_train, X_val, y_train, y_val, all_images, all_labels = create_stratified_split(val_size=0.15)
-    
-    # step 3: Create new directory structure
-    new_base = create_new_directory_structure(
-        base_path='data/chest_xray',
-        X_train=X_train,
-        X_val=X_val,
-        y_train=y_train,
-        y_val=y_val
-    )
-    
-    # step 4: Visualize results
-    visualize_distribution(original_stats, new_base)
-    
-    print("\n✅ Data reorganization complete!")
+    if not os.path.exists('data/reorganized_chest_xray'):
+        # step 1: Analyze original
+        original_stats = analyze_dataset_structure()
+        
+        # step 2: Create stratified split
+        X_train, X_val, y_train, y_val, all_images, all_labels = create_stratified_split(val_size=0.15)
+        
+        # step 3: Create new directory structure
+        new_base = create_new_directory_structure(
+            base_path='data/chest_xray',
+            X_train=X_train,
+            X_val=X_val,
+            y_train=y_train,
+            y_val=y_val
+        )
+        
+        # step 4: Visualize results
+        visualize_distribution(original_stats, new_base)
+        
+        print("\n✅ Data reorganization complete!")
+    else:
+        print("✅ Reorganized dataset already exists, skipping reorganization...")
