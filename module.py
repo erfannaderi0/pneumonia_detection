@@ -1,7 +1,7 @@
 import torch
 import torchvision
 from torch import nn
-from sklearn.metrics import roc_auc_score, accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import roc_auc_score, accuracy_score, classification_report, confusion_matrix, f1_score
 import numpy as np
 
 
@@ -229,6 +229,128 @@ def test_step(model: nn.Module,
         print(f"Test AUC: {test_auc:.4f}")
         print("\nDetailed Classification Report:")
         print(classification_report(all_labels, all_preds))
+        print("\nConfusion Matrix:")
+        print(confusion_matrix(all_labels, all_preds))
+        print("="*50)
+    
+    return test_loss, test_auc, accuracy, all_preds, all_labels
+
+def find_optimal_threshold(model, dataloader, device):
+    model.eval()
+    all_probs = []
+    all_labels = []
+    
+    with torch.inference_mode():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            outputs = model(X)
+            probs = torch.softmax(outputs, dim=1)[:, 1]
+            all_probs.extend(probs.cpu().numpy())
+            all_labels.extend(y.cpu().numpy())
+    
+    thresholds = np.arange(0.3, 0.8, 0.05)
+    best_f1 = 0
+    best_threshold = 0.5
+    
+    for threshold in thresholds:
+        preds = (np.array(all_probs) >= threshold).astype(int)
+        f1 = f1_score(all_labels, preds, average='weighted')
+        
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = threshold
+    
+    print(f"Optimal threshold: {best_threshold:.2f} (F1: {best_f1:.4f})")
+    return best_threshold, best_f1
+
+def test_with_threshold(model: nn.Module,
+                        dataloader: torch.utils.data.DataLoader,
+                        loss_fn: nn.Module,
+                        device: torch.device = None,
+                        threshold: float = 0.5,
+                        verbose: bool = True):
+    """
+    Test the model with a custom probability threshold for binary classification.
+    
+    Args:
+        model: The neural network model
+        dataloader: DataLoader for test data
+        loss_fn: Loss function
+        device: Device to run on (cuda/cpu)
+        threshold: Probability threshold for positive class (default: 0.5)
+        verbose: Whether to print detailed results
+    
+    Returns:
+        test_loss: Average loss on test set
+        test_auc: AUC score
+        accuracy: Accuracy score
+        all_preds: All predictions
+        all_labels: All ground truth labels
+    """
+    
+    test_loss = 0
+    all_preds_probs = []  # Store probabilities
+    all_preds = []        # Store final predictions after threshold
+    all_labels = []
+    
+    model.eval()
+    
+    with torch.inference_mode():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            
+            # Forward pass
+            test_pred = model(X)
+            loss = loss_fn(test_pred, y)
+            test_loss += loss.item()
+            
+            # Get probabilities
+            if test_pred.shape[1] == 2:  # Binary classification
+                probs = torch.softmax(test_pred, dim=1)
+                # Get probability of positive class (class 1)
+                prob_positive = probs[:, 1].detach().cpu().numpy()
+                all_preds_probs.extend(prob_positive)
+                
+                # Apply custom threshold
+                batch_preds = (prob_positive >= threshold).astype(int)
+                all_preds.extend(batch_preds)
+            else:  # Multi-class (fallback to argmax)
+                probs = torch.softmax(test_pred, dim=1)
+                all_preds_probs.extend(probs.detach().cpu().numpy())
+                all_preds.extend(torch.argmax(test_pred, dim=1).detach().cpu().numpy())
+            
+            all_labels.extend(y.cpu().numpy())
+    
+    # Calculate average loss
+    test_loss /= len(dataloader)
+    
+    # Convert to numpy arrays
+    all_labels = np.array(all_labels)
+    all_preds = np.array(all_preds)
+    all_preds_probs = np.array(all_preds_probs)
+    
+    # Calculate metrics
+    accuracy = accuracy_score(all_labels, all_preds)
+    
+    # Calculate AUC (using probabilities, not thresholded predictions)
+    if len(np.unique(all_labels)) > 1:
+        if len(np.unique(all_labels)) == 2:  # Binary
+            test_auc = roc_auc_score(all_labels, all_preds_probs)
+        else:  # Multi-class
+            test_auc = roc_auc_score(all_labels, all_preds_probs, multi_class='ovr')
+    else:
+        test_auc = 0.0
+    
+    # Print detailed metrics if verbose
+    if verbose:
+        print("\n" + "="*50)
+        print(f"TEST RESULTS (Threshold = {threshold:.2f})")
+        print("="*50)
+        print(f"Test Loss: {test_loss:.4f}")
+        print(f"Test Accuracy: {accuracy:.4f}")
+        print(f"Test AUC: {test_auc:.4f}")
+        print("\nDetailed Classification Report:")
+        print(classification_report(all_labels, all_preds, target_names=['NORMAL', 'PNEUMONIA']))
         print("\nConfusion Matrix:")
         print(confusion_matrix(all_labels, all_preds))
         print("="*50)
