@@ -5,67 +5,66 @@ from sklearn.metrics import roc_auc_score
 import numpy as np
 
 
-class basic_cnn(nn.Module):
+class improved_cnn(nn.Module):
     def __init__(self, input_shape: int, hidden_units: int, output_shape: int):
         super().__init__()
+        
+        # Block 1: 224x224 -> 112x112
         self.block1 = nn.Sequential(
-            nn.Conv2d(in_channels= input_shape,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
+            nn.Conv2d(input_shape, hidden_units, 3, padding=1),
+            nn.BatchNorm2d(hidden_units),
             nn.ReLU(),
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
+            nn.Conv2d(hidden_units, hidden_units, 3, padding=1),
+            nn.BatchNorm2d(hidden_units),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size= 2,
-                         stride= 2)
-        )
-        self.block2 = nn.Sequential(
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
-            nn.ReLU(),
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size= 2,
-                         stride= 2)
-        )
-        self.block3 = nn.Sequential(
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
-            nn.ReLU(),
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size= 2,
-                         stride= 2)
-        )
-        self.block4 = nn.Sequential(
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
-            nn.ReLU(),
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size= 2,
-                         stride= 2)
-        )
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)),  # Output: (hidden_units, 1, 1)
-            nn.Flatten(),                   # Output: (hidden_units,)
-            nn.Linear(hidden_units, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, output_shape)
+            nn.MaxPool2d(2)
         )
         
-    def forward(self, x: torch.Tensor):
+        # Block 2: 112x112 -> 56x56
+        self.block2 = nn.Sequential(
+            nn.Conv2d(hidden_units, hidden_units*2, 3, padding=1),
+            nn.BatchNorm2d(hidden_units*2),
+            nn.ReLU(),
+            nn.Conv2d(hidden_units*2, hidden_units*2, 3, padding=1),
+            nn.BatchNorm2d(hidden_units*2),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        
+        # Block 3: 56x56 -> 28x28
+        self.block3 = nn.Sequential(
+            nn.Conv2d(hidden_units*2, hidden_units*4, 3, padding=1),
+            nn.BatchNorm2d(hidden_units*4),
+            nn.ReLU(),
+            nn.Conv2d(hidden_units*4, hidden_units*4, 3, padding=1),
+            nn.BatchNorm2d(hidden_units*4),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        
+        # Block 4: 28x28 -> 14x14
+        self.block4 = nn.Sequential(
+            nn.Conv2d(hidden_units*4, hidden_units*8, 3, padding=1),
+            nn.BatchNorm2d(hidden_units*8),
+            nn.ReLU(),
+            nn.Conv2d(hidden_units*8, hidden_units*8, 3, padding=1),
+            nn.BatchNorm2d(hidden_units*8),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        
+        # Classifier
+        self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Dropout(0.5),
+            nn.Linear(hidden_units*8, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, output_shape)
+        )
+        
+    def forward(self, x):
         x = self.block1(x)
         x = self.block2(x)
         x = self.block3(x)
@@ -187,3 +186,6 @@ def val_step(model: nn.Module,
             val_auc = 0.0
 
     return val_loss, val_auc
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(device)

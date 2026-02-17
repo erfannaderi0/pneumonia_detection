@@ -51,7 +51,17 @@ for split in counts:
     else:
         print(f"{split.upper():<10} No images found")
 
-transform = transforms.Compose([
+
+train_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.Grayscale(num_output_channels=1),
+    transforms.ToTensor(),
+    transforms.RandomAffine(degrees=5, translate=(0.05, 0.05), scale=(0.95, 1.05), fill=0),
+    transforms.RandomAdjustSharpness(sharpness_factor=2, p=0.1),
+    transforms.Normalize(mean=[0.5], std=[0.5])
+])
+
+val_test_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.Grayscale(num_output_channels=1),
     transforms.ToTensor(),
@@ -60,17 +70,17 @@ transform = transforms.Compose([
 
 train_data = datasets.ImageFolder(
     root='data/reorganized_chest_xray/train',
-    transform= transform
+    transform= train_transform
 )
 
 val_data = datasets.ImageFolder(
     root='data/reorganized_chest_xray/val',
-    transform= transform
+    transform= val_test_transform
 )
 
 test_data = datasets.ImageFolder(
     root='data/reorganized_chest_xray/test',
-    transform= transform
+    transform= val_test_transform
 )
 
 image0, label0 = train_data[0]
@@ -95,7 +105,7 @@ val_dataloader = DataLoader(dataset= val_data, batch_size= BATCH_SIZE, shuffle= 
 test_dataloader = DataLoader(dataset= test_data, batch_size= BATCH_SIZE, shuffle= False)
 
 
-model1 = basic_cnn(input_shape= 1,
+model1 = improved_cnn(input_shape= 1,
                           hidden_units=10,
                           output_shape= 2)
 model1.to(device)
@@ -107,7 +117,7 @@ model1.to(device)
 #=====================================================================
 
 lossfn1 = nn.CrossEntropyLoss()
-optimizer1 = torch.optim.SGD(params= model1.parameters(), lr= 0.1)
+optimizer1 = torch.optim.SGD(params= model1.parameters(), lr= 0.01)
 
 epochs = 3
 
@@ -126,4 +136,3 @@ for epoch in tqdm(range(epochs)):
     print(f"\nEpoch {epoch+1}/{epochs}")
     print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
     print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
-
