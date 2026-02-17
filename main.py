@@ -7,6 +7,7 @@ from torch import nn
 from module import *
 from tqdm.auto import tqdm
 from data import reorganize_dataset
+from sklearn.utils.class_weight import compute_class_weight
 
 if not os.path.exists('data/reorganized_chest_xray'):
     reorganize_dataset.main()
@@ -116,10 +117,27 @@ model1.to(device)
 #=                                                                   =
 #=====================================================================
 
-lossfn1 = nn.CrossEntropyLoss()
-optimizer1 = torch.optim.SGD(params= model1.parameters(), lr= 0.01)
+y_train_labels = [label for _, label in train_data.samples]
+class_weights = compute_class_weight(
+    class_weight='balanced',
+    classes=np.unique(y_train_labels),
+    y=y_train_labels
+)
+class_weights = torch.FloatTensor(class_weights).to(device)
 
-epochs = 3
+lossfn1 = nn.CrossEntropyLoss(weight=class_weights)
+optimizer1 = torch.optim.Adam(params= model1.parameters(), lr= 0.01)
+
+epochs = 20
+
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer1,
+                                                       mode='min',
+                                                       factor=0.5,
+                                                       patience=3)
+
+best_val_loss = float('inf')
+patience = 5
+patience_counter = 0
 
 for epoch in tqdm(range(epochs)):
     train_loss, train_auc = train_step(model=model1,
@@ -136,6 +154,20 @@ for epoch in tqdm(range(epochs)):
     print(f"\nEpoch {epoch+1}/{epochs}")
     print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
     print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
+    
+    scheduler.step(val_loss)
+    
+    # Early stopping
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
+        patience_counter = 0
+        # Save best model
+        torch.save(model1.state_dict(), 'models/model1_improved_cnn.pth')
+    else:
+        patience_counter += 1
+        if patience_counter >= patience:
+            print(f"Early stopping at epoch {epoch+1}")
+            break
 
 
 model1_result = test_step(model= model1,

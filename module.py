@@ -9,6 +9,13 @@ class improved_cnn(nn.Module):
     def __init__(self, input_shape: int, hidden_units: int, output_shape: int):
         super().__init__()
         
+        dropout_rate = 0.2
+        
+        self.dropout1 = nn.Dropout2d(dropout_rate)
+        self.dropout2 = nn.Dropout2d(dropout_rate)
+        self.dropout3 = nn.Dropout2d(dropout_rate)
+        self.dropout4 = nn.Dropout2d(dropout_rate)
+        
         # Block 1: 224x224 -> 112x112
         self.block1 = nn.Sequential(
             nn.Conv2d(input_shape, hidden_units, 3, padding=1),
@@ -66,9 +73,13 @@ class improved_cnn(nn.Module):
         
     def forward(self, x):
         x = self.block1(x)
+        x = self.dropout1(x)
         x = self.block2(x)
+        x = self.dropout2(x)
         x = self.block3(x)
+        x = self.dropout3(x)
         x = self.block4(x)
+        x = self.dropout4(x)
         x = self.classifier(x)
         return x
 
