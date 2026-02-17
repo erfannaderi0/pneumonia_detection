@@ -121,57 +121,102 @@ y_train_labels = [label for _, label in train_data.samples]
 class_weights = compute_class_weight(
     class_weight='balanced',
     classes=np.unique(y_train_labels),
-    y=y_train_labels
-)
+    y=y_train_labels)
 class_weights = torch.FloatTensor(class_weights).to(device)
 
 lossfn1 = nn.CrossEntropyLoss(weight=class_weights)
-optimizer1 = torch.optim.Adam(params= model1.parameters(), lr= 0.01)
 
-epochs = 20
+if not os.path.exists('models/model1_improved_cnn.pth'):
 
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer1,
-                                                       mode='min',
-                                                       factor=0.5,
-                                                       patience=3)
+    optimizer1 = torch.optim.Adam(params= model1.parameters(), lr= 0.01)
 
-best_val_loss = float('inf')
-patience = 5
-patience_counter = 0
+    epochs = 20
 
-for epoch in tqdm(range(epochs)):
-    train_loss, train_auc = train_step(model=model1,
-                                        dataloader=train_dataloader,
-                                        loss_fn=lossfn1,
-                                        optimizer=optimizer1,
-                                        device=device)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer1,
+                                                        mode='min',
+                                                        factor=0.5,
+                                                        patience=3)
+
+    best_val_loss = float('inf')
+    patience = 5
+    patience_counter = 0
+
+    for epoch in tqdm(range(epochs)):
+        train_loss, train_auc = train_step(model=model1,
+                                            dataloader=train_dataloader,
+                                            loss_fn=lossfn1,
+                                            optimizer=optimizer1,
+                                            device=device)
+        
+        val_loss, val_auc = val_step(model=model1,
+                                    dataloader=val_dataloader,
+                                    loss_fn=lossfn1,
+                                    device=device)
+        
+        print(f"\nEpoch {epoch+1}/{epochs}")
+        print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
+        print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
+        
+        scheduler.step(val_loss)
+        
+        # Early stopping
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+            # Save best model
+            torch.save(model1.state_dict(), 'models/model1_improved_cnn.pth')
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch+1}")
+                break
+
+
+    model1_result = test_step(model= model1,
+                            dataloader= test_dataloader,
+                            loss_fn= lossfn1,
+                            device= device,
+                            verbose= True)
+else :
     
-    val_loss, val_auc = val_step(model=model1,
-                                  dataloader=val_dataloader,
-                                  loss_fn=lossfn1,
-                                  device=device)
+    model1.load_state_dict(torch.load('models/model1_improved_cnn.pth'))
+    model1.to(device)
+    model1.eval()
+    print("Model loaded successfully!")
     
-    print(f"\nEpoch {epoch+1}/{epochs}")
-    print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
-    print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
-    
-    scheduler.step(val_loss)
-    
-    # Early stopping
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        patience_counter = 0
-        # Save best model
-        torch.save(model1.state_dict(), 'models/model1_improved_cnn.pth')
-    else:
-        patience_counter += 1
-        if patience_counter >= patience:
-            print(f"Early stopping at epoch {epoch+1}")
-            break
+    # After training your model
+    # 1. First find the optimal threshold using validation data
+    optimal_threshold, best_score = find_optimal_threshold(
+        model=model1,
+        dataloader=val_dataloader,  # Use validation set!
+        device=device)
 
+    # 2. Then test with the optimal threshold
+    test_loss, test_auc, test_acc, test_preds, test_labels = test_with_threshold(
+        model=model1,
+        dataloader=test_dataloader,
+        loss_fn=lossfn1,
+        device=device,
+        threshold=optimal_threshold,
+        verbose=True
+    )
 
-model1_result = test_step(model= model1,
-                          dataloader= test_dataloader,
-                          loss_fn= lossfn1,
-                          device= device,
-                          verbose= True)
+    # 3. Compare with default threshold (0.5)
+    print("\n" + "="*60)
+    print("COMPARING DEFAULT VS OPTIMAL THRESHOLD")
+    print("="*60)
+
+    # Test with default threshold for comparison
+    default_loss, default_auc, default_acc, default_preds, default_labels = test_with_threshold(
+        model=model1,
+        dataloader=test_dataloader,
+        loss_fn=lossfn1,
+        device=device,
+        threshold=0.5,
+        verbose=False  # Don't print full report
+    )
+
+    print(f"Default threshold (0.50): Accuracy={default_acc:.4f}, AUC={default_auc:.4f}")
+    print(f"Optimal threshold ({optimal_threshold:.2f}): Accuracy={test_acc:.4f}, AUC={test_auc:.4f}")
+    print(f"Improvement: +{(test_acc - default_acc)*100:.2f}% accuracy")
+    
