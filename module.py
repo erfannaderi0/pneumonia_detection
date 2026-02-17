@@ -1,7 +1,7 @@
 import torch
 import torchvision
 from torch import nn
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, accuracy_score, classification_report, confusion_matrix
 import numpy as np
 
 
@@ -72,37 +72,7 @@ class improved_cnn(nn.Module):
         x = self.classifier(x)
         return x
 
-"""
-def train_step(model: nn.Module,
-               dataloader: torch.utils.data.DataLoader,
-               loss_fn: nn.Module,
-               optimizer: torch.optim.Optimizer,
-               device: torch.device = None):
-    
-    train_loss, train_auc = 0, 0
-    
-    model.to(device)
-    
-    model.train()
-    
-    for batch, (X, y) in enumerate(dataloader):
-        
-        X, y = X.to(device), y.to(device)
-        
-        y_pred = model(X)
-        loss = loss_fn(y_pred, y)
-        train_loss += loss
-        train_auc += roc_auc_score(y, y_pred.argmax(dim=1))
-        
-        optimizer.zero_grad()
-        
-        loss.backward()
-        
-        optimizer.step()
-        
-    train_loss /= len(dataloader)
-    train_auc /= len(dataloader)
-"""
+
 def train_step(model: nn.Module,
                dataloader: torch.utils.data.DataLoader,
                loss_fn: nn.Module,
@@ -187,5 +157,69 @@ def val_step(model: nn.Module,
 
     return val_loss, val_auc
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print(device)
+
+def test_step(model: nn.Module,
+              dataloader: torch.utils.data.DataLoader,
+              loss_fn: nn.Module,
+              device: torch.device = None,
+              verbose: bool = True):
+    
+    test_loss = 0
+    all_preds = []
+    all_preds_probs = []
+    all_labels = []
+    
+    model.eval()
+    
+    with torch.inference_mode():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            
+            test_pred = model(X)
+            loss = loss_fn(test_pred, y)
+            test_loss += loss.item()
+            
+            if test_pred.shape[1] == 2:  # Binary classification
+                probs = torch.softmax(test_pred, dim=1)
+
+                all_preds_probs.extend(probs[:, 1].detach().cpu().numpy())
+
+                all_preds.extend(torch.argmax(test_pred, dim=1).detach().cpu().numpy())
+            else:  # Multi-class
+                probs = torch.softmax(test_pred, dim=1)
+                all_preds_probs.extend(probs.detach().cpu().numpy())
+                all_preds.extend(torch.argmax(test_pred, dim=1).detach().cpu().numpy())
+            
+            all_labels.extend(y.cpu().numpy())
+    
+    test_loss /= len(dataloader)
+    
+    all_labels = np.array(all_labels)
+    all_preds = np.array(all_preds)
+    
+    # Accuracy
+    accuracy = accuracy_score(all_labels, all_preds)
+    
+    if len(np.unique(all_labels)) > 1:
+        if len(np.unique(all_labels)) == 2:  # Binary
+            test_auc = roc_auc_score(all_labels, all_preds_probs)
+        else:  # Multi-class
+            test_auc = roc_auc_score(all_labels, all_preds_probs, multi_class='ovr')
+    else:
+        test_auc = 0.0
+    
+    # Print detailed metrics if verbose
+    if verbose:
+        print("\n" + "="*50)
+        print("TEST RESULTS")
+        print("="*50)
+        print(f"Test Loss: {test_loss:.4f}")
+        print(f"Test Accuracy: {accuracy:.4f}")
+        print(f"Test AUC: {test_auc:.4f}")
+        print("\nDetailed Classification Report:")
+        print(classification_report(all_labels, all_preds))
+        print("\nConfusion Matrix:")
+        print(confusion_matrix(all_labels, all_preds))
+        print("="*50)
+    
+    return test_loss, test_auc, accuracy, all_preds, all_labels

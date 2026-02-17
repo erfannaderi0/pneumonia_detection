@@ -136,3 +136,10 @@ for epoch in tqdm(range(epochs)):
     print(f"\nEpoch {epoch+1}/{epochs}")
     print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
     print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
+
+
+model1_result = test_step(model= model1,
+                          dataloader= test_dataloader,
+                          loss_fn= lossfn1,
+                          device= device,
+                          verbose= True)
