@@ -178,7 +178,7 @@ if not os.path.exists('models/model1_improved_cnn.pth'):
                             device= device,
                             verbose= True)
 else :
-    
+    """
     model1.load_state_dict(torch.load('models/model1_improved_cnn.pth'))
     model1.to(device)
     model1.eval()
@@ -219,4 +219,5 @@ else :
     print(f"Default threshold (0.50): Accuracy={default_acc:.4f}, AUC={default_auc:.4f}")
     print(f"Optimal threshold ({optimal_threshold:.2f}): Accuracy={test_acc:.4f}, AUC={test_auc:.4f}")
     print(f"Improvement: +{(test_acc - default_acc)*100:.2f}% accuracy")
-    
+    """
+    example_usage()
