@@ -177,47 +177,9 @@ if not os.path.exists('models/model1_improved_cnn.pth'):
                             loss_fn= lossfn1,
                             device= device,
                             verbose= True)
+
+elif not os.path.exists('models/model_resnet152.pth'):
+    os.system('python transfer_training_code/resnet152.py')
+
 else :
-    """
-    model1.load_state_dict(torch.load('models/model1_improved_cnn.pth'))
-    model1.to(device)
-    model1.eval()
-    print("Model loaded successfully!")
-    
-    # After training your model
-    # 1. First find the optimal threshold using validation data
-    optimal_threshold, best_score = find_optimal_threshold(
-        model=model1,
-        dataloader=val_dataloader,  # Use validation set!
-        device=device)
-
-    # 2. Then test with the optimal threshold
-    test_loss, test_auc, test_acc, test_preds, test_labels = test_with_threshold(
-        model=model1,
-        dataloader=test_dataloader,
-        loss_fn=lossfn1,
-        device=device,
-        threshold=optimal_threshold,
-        verbose=True
-    )
-
-    # 3. Compare with default threshold (0.5)
-    print("\n" + "="*60)
-    print("COMPARING DEFAULT VS OPTIMAL THRESHOLD")
-    print("="*60)
-
-    # Test with default threshold for comparison
-    default_loss, default_auc, default_acc, default_preds, default_labels = test_with_threshold(
-        model=model1,
-        dataloader=test_dataloader,
-        loss_fn=lossfn1,
-        device=device,
-        threshold=0.5,
-        verbose=False  # Don't print full report
-    )
-
-    print(f"Default threshold (0.50): Accuracy={default_acc:.4f}, AUC={default_auc:.4f}")
-    print(f"Optimal threshold ({optimal_threshold:.2f}): Accuracy={test_acc:.4f}, AUC={test_auc:.4f}")
-    print(f"Improvement: +{(test_acc - default_acc)*100:.2f}% accuracy")
-    """
     example_usage()

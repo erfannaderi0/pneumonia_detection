@@ -361,125 +361,6 @@ def test_with_threshold(model: nn.Module,
     
     return test_loss, test_auc, accuracy, all_preds, all_labels
 
-def prepare_image_for_model(image_path):
-
-    if isinstance(image_path, (str, Path)):
-        img = Image.open(image_path).convert('RGB')
-    else:
-        img = image_path.convert('RGB')
-    
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.Grayscale(num_output_channels=1),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])
-    ])
-    
-    image_tensor = transform(img).unsqueeze(0)
-    
-    return image_tensor
-
-
-def get_pneumonia_probability(model, image_tensor, device):
-
-    model.eval()
-
-    image_tensor = image_tensor.to(device)
-    
-    with torch.inference_mode():
-
-        output = model(image_tensor)
-
-        # Output shape: [batch_size, num_classes] = [1, 2]
-        probabilities = torch.softmax(output, dim=1)
-        
-        pneumonia_prob = probabilities[:, 1].cpu().numpy()[0]
-    
-    return float(pneumonia_prob)
-
-
-def simple_predict(model, image_path, device, threshold=0.55):
-
-    image_tensor = prepare_image_for_model(image_path)
-
-    prob = get_pneumonia_probability(model, image_tensor, device)
-
-    prediction = "PNEUMONIA" if prob >= threshold else "NORMAL"
-
-    if prediction == "PNEUMONIA":
-        if prob >= 0.90:
-            confidence = "VERY HIGH - Definitely pneumonia"
-        elif prob >= 0.75:
-            confidence = "HIGH - Likely pneumonia"
-        elif prob >= threshold:
-            confidence = "MEDIUM - Possible pneumonia, please review"
-        else:
-            confidence = "LOW - Just above threshold"
-    else:  # NORMAL
-        if prob <= 0.10:
-            confidence = "VERY HIGH - Definitely normal"
-        elif prob <= 0.25:
-            confidence = "HIGH - Likely normal"
-        elif prob < threshold:
-            confidence = "MEDIUM - Possibly normal, please review"
-        else:
-            confidence = "LOW - Just below threshold"
-
-    needs_review = 0.25 < prob < 0.75
-    
-    result = {
-        'image': str(image_path),
-        'prediction': prediction,
-        'probability': round(prob, 3),
-        'probability_percent': f"{prob:.1%}",
-        'confidence': confidence,
-        'needs_review': needs_review,
-        'review_message': "⚠️ Please review this case" if needs_review else "✓ OK"
-    }
-    
-    return result
-
-
-def batch_predict_simple(model, image_folder, device, threshold=0.55):
-    """
-    Predict on all images in a folder.
-    
-    Args:
-        model: Your trained model
-        image_folder: Folder containing X-ray images
-        device: CPU or CUDA
-        threshold: Your optimal threshold
-    
-    Returns:
-        List of results
-    """
-    # Getting all image files in folder
-    image_extensions = ['.jpg', '.jpeg', '.png']
-    image_paths = []
-    
-    for ext in image_extensions:
-        image_paths.extend(Path(image_folder).glob(f"*{ext}"))
-        image_paths.extend(Path(image_folder).glob(f"*{ext.upper()}"))
-    
-    if not image_paths:
-        print(f"No images found in {image_folder}")
-        return []
-    
-    print(f"Found {len(image_paths)} images to analyze...")
-    
-    # Processing each image
-    results = []
-    for i, img_path in enumerate(image_paths):
-        print(f"  Processing {i+1}/{len(image_paths)}: {img_path.name}")
-        
-        try:
-            result = simple_predict(model, img_path, device, threshold)
-            results.append(result)
-        except Exception as e:
-            print(f"  ❌ Error processing {img_path.name}: {e}")
-    
-    return results
-
 
 def print_result_simple(result):
     """
@@ -528,74 +409,224 @@ def save_results_simple(results, output_file='predictions.txt'):
     print(f"\n✅ Results saved to {output_file}")
 
 
-def example_usage():
+def prepare_image_for_model(image_path, model_type='custom'):
     """
-    Complete example of how to use these simple functions.
+    Prepare image for model input.
+    
+    Args:
+        image_path: Path to image or PIL Image
+        model_type: 'custom' for grayscale (1-channel) or 'resnet152' for 3-channel RGB
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    if isinstance(image_path, (str, Path)):
+        img = Image.open(image_path).convert('RGB')
+    else:
+        img = image_path.convert('RGB')
     
-    from module import improved_cnn
+    if model_type == 'custom':
+        # For your original custom grayscale model
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+    elif model_type == 'resnet152':
+        # For your trained ResNet152 model
+        # Note: This matches your training transforms
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.Grayscale(num_output_channels=3),  # Convert to 3-channel
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+    else:
+        # Generic pretrained model (like default ResNet)
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
     
-    model = improved_cnn(input_shape=1, hidden_units=10, output_shape=2)
-    model.load_state_dict(torch.load('models/model1_improved_cnn.pth'))
-    model.to(device)
-    model.eval()
-    print("✅ Model loaded successfully")
-    
-    # 3. optimal threshold
-    OPTIMAL_THRESHOLD = 0.55
-    
-    # 4. Single image prediction
-    single_image_pred = int(input("enter number 1 if you want to predict a single specific image : "))
-    
-    if single_image_pred == 1:
-        print("\n" + "="*60)
-        print("SINGLE IMAGE PREDICTION EXAMPLE")
-        print("="*60)
-        
-        while True:
-            print("\n" + "-"*40)
-            user_input = input("Enter image path (or '0' to exit): ")
-            
-            if user_input == '0':
-                print("Exiting single image prediction...")
-                break
-            
-            if os.path.exists(user_input):
-                result = simple_predict(model, user_input, device, OPTIMAL_THRESHOLD)
-                print_result_simple(result)
-            else:
-                print(f"❌ File not found: {user_input}")
-                print("Please check the path and try again.")
-    else :
-        
-        # 5. Batch prediction example
-        print("\n" + "="*60)
-        print("BATCH PREDICTION EXAMPLE")
-        print("="*60)
-        
-        test_normal_dir = "data/reorganized_chest_xray/test/NORMAL"
-        test_pneumonia_dir = "data/reorganized_chest_xray/test/PNEUMONIA"
-        
-        all_results = []
-        
-        if os.path.exists(test_normal_dir):
-            normal_images = list(Path(test_normal_dir).glob("*.jpeg"))[:3]
-            for img_path in normal_images:
-                result = simple_predict(model, img_path, device, OPTIMAL_THRESHOLD)
-                all_results.append(result)
-        
-        if os.path.exists(test_pneumonia_dir):
-            pneumonia_images = list(Path(test_pneumonia_dir).glob("*.jpeg"))[:3]
-            for img_path in pneumonia_images:
-                result = simple_predict(model, img_path, device, OPTIMAL_THRESHOLD)
-                all_results.append(result)
-        
-        print(f"\nProcessed {len(all_results)} images:")
-        for r in all_results:
-            print(f"  {Path(r['image']).name:<30} → {r['prediction']:<10} ({r['probability_percent']}) {r['review_message']}")
+    image_tensor = transform(img).unsqueeze(0)
+    return image_tensor
 
+
+def get_pneumonia_probability(model, image_tensor, device, model_type='custom'):
+
+    model.eval()
+    image_tensor = image_tensor.to(device)
+    
+    with torch.inference_mode():
+        output = model(image_tensor)
+        
+        # Both your custom model and ResNet152 have 2 output classes
+        probabilities = torch.softmax(output, dim=1)
+        pneumonia_prob = probabilities[:, 1].cpu().numpy()[0]
+    
+    return float(pneumonia_prob)
+
+
+def simple_predict(model, image_path, device, threshold=0.55, model_type='custom'):
+
+    image_tensor = prepare_image_for_model(image_path, model_type)
+    prob = get_pneumonia_probability(model, image_tensor, device, model_type)
+    
+    # Rest of your function remains the same...
+    prediction = "PNEUMONIA" if prob >= threshold else "NORMAL"
+    
+    if prediction == "PNEUMONIA":
+        if prob >= 0.90:
+            confidence = "VERY HIGH - Definitely pneumonia"
+        elif prob >= 0.75:
+            confidence = "HIGH - Likely pneumonia"
+        elif prob >= threshold:
+            confidence = "MEDIUM - Possible pneumonia, please review"
+        else:
+            confidence = "LOW - Just above threshold"
+    else:  # NORMAL
+        if prob <= 0.10:
+            confidence = "VERY HIGH - Definitely normal"
+        elif prob <= 0.25:
+            confidence = "HIGH - Likely normal"
+        elif prob < threshold:
+            confidence = "MEDIUM - Possibly normal, please review"
+        else:
+            confidence = "LOW - Just below threshold"
+    
+    needs_review = 0.25 < prob < 0.75
+    
+    result = {
+        'image': str(image_path),
+        'prediction': prediction,
+        'probability': round(prob, 3),
+        'probability_percent': f"{prob:.1%}",
+        'confidence': confidence,
+        'needs_review': needs_review,
+        'review_message': "⚠️ Please review this case" if needs_review else "✓ OK"
+    }
+    
+    return result
+
+
+def example_usage():
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    while True :
+    
+        print(f"Using device: {device}")
+        print("\nSelect model type:")
+        print("1. Custom CNN (grayscale, 1-channel)")
+        print("2. ResNet152 (3-channel, from your training)")
+        print("0. Exit program")
+        
+        choice = input("Enter choice (1, 2 or 0): ").strip()
+        
+        if choice == '0':
+            print("\n👋 Exiting program. Goodbye!")
+            return
+        
+        elif choice == '2':
+            import torchvision.models as models
+            
+            model_res152 = models.resnet152(weights=None)
+            num_features = model_res152.fc.in_features
+            model_res152.fc = nn.Sequential(
+                nn.Linear(num_features, 256),
+                nn.ReLU(inplace=True), 
+                nn.Dropout(0.4),
+                nn.Linear(256, 2)
+            )
+            
+            model_path = 'models/model_resnet152.pth'
+            if os.path.exists(model_path):
+                model_res152.load_state_dict(torch.load(model_path, map_location=device))
+                print("✅ ResNet152 model loaded successfully")
+            else:
+                print(f"❌ Model file not found: {model_path}")
+                return
+            
+            model_to_use = model_res152
+            model_type = 'resnet152'
+            OPTIMAL_THRESHOLD = 0.5
+            
+        elif choice == '1':
+            # Load your custom CNN model
+            from module import improved_cnn
+            
+            custom_model = improved_cnn(input_shape=1, hidden_units=10, output_shape=2)
+            model_path = 'models/model1_improved_cnn.pth'
+            
+            if os.path.exists(model_path):
+                custom_model.load_state_dict(torch.load(model_path, map_location=device))
+                print("✅ Custom CNN model loaded successfully")
+            else:
+                print(f"❌ Model file not found: {model_path}")
+                return
+            
+            model_to_use = custom_model
+            model_type = 'custom'
+            OPTIMAL_THRESHOLD = 0.55
+        
+        model_to_use.to(device)
+        model_to_use.eval()
+        
+        # Single image prediction
+        single_image_pred = int(input("\nEnter 1 for single image prediction, 0 for batch prediction: "))
+        
+        if single_image_pred == 1:
+            print("\n" + "="*60)
+            print("SINGLE IMAGE PREDICTION")
+            print("="*60)
+            
+            while True:
+                print("\n" + "-"*40)
+                user_input = input("Enter image path (or '0' to exit): ")
+                
+                if user_input == '0':
+                    print("Exiting single image prediction...")
+                    break
+                
+                if os.path.exists(user_input):
+                    result = simple_predict(model_to_use, user_input, device, 
+                                        OPTIMAL_THRESHOLD, model_type)
+                    print_result_simple(result)
+                else:
+                    print(f"❌ File not found: {user_input}")
+                    print("Please check the path and try again.")
+        else:
+            # Batch prediction
+            print("\n" + "="*60)
+            print("BATCH PREDICTION")
+            print("="*60)
+            
+            test_normal_dir = "data/reorganized_chest_xray/test/NORMAL"
+            test_pneumonia_dir = "data/reorganized_chest_xray/test/PNEUMONIA"
+            
+            all_results = []
+            
+            if os.path.exists(test_normal_dir):
+                normal_images = list(Path(test_normal_dir).glob("*.jpeg"))[:5]  # First 5 normal images
+                for img_path in normal_images:
+                    result = simple_predict(model_to_use, img_path, device, 
+                                        OPTIMAL_THRESHOLD, model_type)
+                    all_results.append(result)
+            
+            if os.path.exists(test_pneumonia_dir):
+                pneumonia_images = list(Path(test_pneumonia_dir).glob("*.jpeg"))[:5]  # First 5 pneumonia images
+                for img_path in pneumonia_images:
+                    result = simple_predict(model_to_use, img_path, device, 
+                                        OPTIMAL_THRESHOLD, model_type)
+                    all_results.append(result)
+            
+            # Print summary
+            print(f"\nProcessed {len(all_results)} images:")
+            for r in all_results:
+                print(f"  {Path(r['image']).name:<30} → {r['prediction']:<10} ({r['probability_percent']}) {r['review_message']}")
+            
+            # Save results
+            save_results_simple(all_results, f'prediction_samples/predictions_{model_type}.txt')
 
 if __name__ == "__main__":
     example_usage()
