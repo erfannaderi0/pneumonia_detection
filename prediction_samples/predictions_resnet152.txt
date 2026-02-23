@@ -2,23 +2,15 @@ PNEUMONIA DETECTION RESULTS
 ============================================================
 
 Total images: 10
-Pneumonia detected: 8
-Normal: 2
-Needs review: 3
+Pneumonia detected: 5
+Normal: 5
+Needs review: 0
 
 PNEUMONIA CASES:
 ----------------------------------------
-data\reorganized_chest_xray\test\NORMAL\IM-0001-0001.jpeg: 85.3% - HIGH - Likely pneumonia
-data\reorganized_chest_xray\test\NORMAL\IM-0005-0001.jpeg: 57.8% - MEDIUM - Possible pneumonia, please review
-data\reorganized_chest_xray\test\NORMAL\IM-0007-0001.jpeg: 56.6% - MEDIUM - Possible pneumonia, please review
-data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_475.jpeg: 99.0% - VERY HIGH - Definitely pneumonia
-data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_477.jpeg: 99.8% - VERY HIGH - Definitely pneumonia
-data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_478.jpeg: 99.2% - VERY HIGH - Definitely pneumonia
+data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_475.jpeg: 100.0% - VERY HIGH - Definitely pneumonia
+data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_477.jpeg: 100.0% - VERY HIGH - Definitely pneumonia
+data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_478.jpeg: 100.0% - VERY HIGH - Definitely pneumonia
 data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_479.jpeg: 100.0% - VERY HIGH - Definitely pneumonia
 data\reorganized_chest_xray\test\PNEUMONIA\person100_bacteria_480.jpeg: 100.0% - VERY HIGH - Definitely pneumonia
 
-CASES NEEDING REVIEW:
-----------------------------------------
-data\reorganized_chest_xray\test\NORMAL\IM-0005-0001.jpeg: PNEUMONIA (57.8%)
-data\reorganized_chest_xray\test\NORMAL\IM-0006-0001.jpeg: NORMAL (42.5%)
-data\reorganized_chest_xray\test\NORMAL\IM-0007-0001.jpeg: PNEUMONIA (56.6%)
