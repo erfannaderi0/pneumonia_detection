@@ -126,7 +126,7 @@ if __name__ == '__main__':
             param.requires_grad = True
 
         optimizer_ft = optim.Adam(model_res152.parameters(), lr=1e-5)
-        exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+        exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=5, gamma=0.1)
         
         for epoch in tqdm(range(epochs)):
             
@@ -145,7 +145,7 @@ if __name__ == '__main__':
             print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
             print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
                 
-            exp_lr_scheduler.step(val_loss)
+            exp_lr_scheduler.step()
                 
             # Early stopping
             if val_loss < best_val_loss:
@@ -173,17 +173,64 @@ if __name__ == '__main__':
         
         model_path = 'models/model_resnet152.pth'
         if os.path.exists(model_path):
-            state_dict = torch.load(model_path, map_location=device)
+            state_dict = torch.load(model_path, map_location=device, weights_only=False)
             model_res152.load_state_dict(state_dict)
             print("✅ ResNet152 model loaded successfully")
         else:
             print(f"❌ Model file not found: {model_path}")
         
         model_res152.to(device)
-        
+        '''
         model_resnet_result = test_step(model=model_res152,
                                         dataloader=test_dataloader,
                                         loss_fn=loss_fn,
                                         device=device)
+        '''
+
+        # Initialize plotter
+        plotter = Plot(style='seaborn-v0_8-darkgrid', figsize=(12, 8))
+
+        # After running test_step
+        test_loss, test_auc, accuracy, all_preds, all_labels, all_preds_probs = test_step(model_res152,
+                                                                                          test_dataloader,
+                                                                                          loss_fn,
+                                                                                          device)
+
+        # Get prediction probabilities (you'd need to modify test_step to return them)
+        # all_preds_probs should be returned from test_step
+
+        # 1. Plot confusion matrix
+        plotter.plot_confusion_matrix(all_labels,
+                                      all_preds,
+                                      class_names=['Class 0', 'Class 1'],
+                                      normalize=False,
+                                      title='Test Set Confusion Matrix',
+                                      save_path='pictures/plot_confusion_matrix_res152')
+
+        # 2. Plot ROC curves
+        plotter.plot_roc_curves(all_labels,
+                                all_preds_probs,
+                                n_classes=2,
+                                class_names=['Class 0', 'Class 1'],
+                                title='ROC Curves - Test Set',
+                                save_path='pictures/plot_roc_curves')
+
+        # 3. Plot Precision-Recall curves
+        plotter.plot_precision_recall_curves(all_labels,
+                                             all_preds_probs,
+                                             n_classes=2,
+                                             class_names=['Class 0', 'Class 1'],
+                                             save_path='pictures/plot_oercision_recall_curves_res152')
+
+        # 4. Learning curves (if you stored losses during training)
+        # train_losses = [...]  # List of training losses per epoch
+        # val_losses = [...]    # List of validation losses per epoch
+        # plotter.plot_learning_curves(train_losses, val_losses)
+
+        # 5. Error analysis
+        plotter.plot_error_analysis(all_labels,
+                                    all_preds,
+                                    feature_names=['feature1', 'feature2'],
+                                    save_path='pictures/plot_error_analysis_res152')
 
     example_usage()
