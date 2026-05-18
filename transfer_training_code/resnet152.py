@@ -232,5 +232,5 @@ if __name__ == '__main__':
                                     all_preds,
                                     feature_names=['feature1', 'feature2'],
                                     save_path='pictures/plot_error_analysis_res152')
-
+    
     example_usage()

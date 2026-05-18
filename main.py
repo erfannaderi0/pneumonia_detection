@@ -8,6 +8,15 @@ from module import *
 from tqdm.auto import tqdm
 from data import reorganize_dataset
 from sklearn.utils.class_weight import compute_class_weight
+import sys
+import io
+
+# Fix encoding issues on Windows
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+
 
 if not os.path.exists('data/reorganized_chest_xray'):
     reorganize_dataset.main()

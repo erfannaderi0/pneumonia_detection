@@ -12,6 +12,7 @@ import seaborn as sns
 from sklearn.metrics import classification_report, ConfusionMatrixDisplay
 from sklearn.preprocessing import label_binarize
 import itertools
+import sys
 
 
 class improved_cnn(nn.Module):
@@ -527,10 +528,12 @@ def example_usage():
         print("0. Exit program")
         
         choice = input("Enter choice (1, 2 or 0): ").strip()
+        if choice == '':  # Handle empty input
+            continue
         
         if choice == '0':
             print("\n👋 Exiting program. Goodbye!")
-            return
+            sys.exit(0)
         
         elif choice == '2':
             import torchvision.models as models
@@ -578,7 +581,14 @@ def example_usage():
         model_to_use.eval()
         
         # Single image prediction
-        single_image_pred = int(input("\nEnter 1 for single image prediction, 0 for batch prediction: "))
+        try:
+            pred_choice = input("\nEnter 1 for single image prediction, 0 for batch prediction: ").strip()
+            if pred_choice == '':
+                continue
+            single_image_pred = int(pred_choice)
+        except ValueError:
+            print("❌ Invalid input. Please enter 1 or 0")
+            continue
         
         if single_image_pred == 1:
             print("\n" + "="*60)
@@ -591,7 +601,7 @@ def example_usage():
                 
                 if user_input == '0':
                     print("Exiting single image prediction...")
-                    break
+                    return
                 
                 if os.path.exists(user_input):
                     result = simple_predict(model_to_use, user_input, device, 

@@ -5,3 +5,4 @@
 /data/reorganized_chest_xray
 /data/__pycache__
 /models
+/prediction_logs
