@@ -10,6 +10,9 @@ from data import reorganize_dataset
 from sklearn.utils.class_weight import compute_class_weight
 import sys
 import io
+from results_tracker import log_and_plot
+from sklearn.metrics import f1_score as sk_f1_score
+import numpy as np
 
 # Fix encoding issues on Windows
 if sys.platform == 'win32':
@@ -65,9 +68,11 @@ for split in counts:
 train_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.Grayscale(num_output_channels=1),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomRotation(degrees=10),
+    transforms.RandomAffine(degrees=0, translate=(0.05, 0.05), scale=(0.9, 1.1)),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
     transforms.ToTensor(),
-    transforms.RandomAffine(degrees=5, translate=(0.05, 0.05), scale=(0.95, 1.05), fill=0),
-    transforms.RandomAdjustSharpness(sharpness_factor=2, p=0.1),
     transforms.Normalize(mean=[0.5], std=[0.5])
 ])
 
@@ -116,8 +121,8 @@ test_dataloader = DataLoader(dataset= test_data, batch_size= BATCH_SIZE, shuffle
 
 
 model1 = improved_cnn(input_shape= 1,
-                          hidden_units=10,
-                          output_shape= 2)
+                      hidden_units=32,
+                      output_shape= 2)
 model1.to(device)
 
 #=====================================================================
@@ -135,11 +140,11 @@ class_weights = torch.FloatTensor(class_weights).to(device)
 
 lossfn1 = nn.CrossEntropyLoss(weight=class_weights)
 
-if not os.path.exists('models/model1_improved_cnn.pth'):
+if not os.path.exists('models/model2_improved_cnn.pth'):
 
-    optimizer1 = torch.optim.Adam(params= model1.parameters(), lr= 0.01)
+    optimizer1 = torch.optim.Adam(params= model1.parameters(), lr= 1e-3)
 
-    epochs = 20
+    epochs = 50
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer1,
                                                         mode='min',
@@ -149,6 +154,9 @@ if not os.path.exists('models/model1_improved_cnn.pth'):
     best_val_loss = float('inf')
     patience = 5
     patience_counter = 0
+    
+    train_loss_history, val_loss_history = [], []
+    train_auc_history,  val_auc_history  = [], []
 
     for epoch in tqdm(range(epochs)):
         train_loss, train_auc = train_step(model=model1,
@@ -166,6 +174,11 @@ if not os.path.exists('models/model1_improved_cnn.pth'):
         print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
         print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
         
+        train_loss_history.append(train_loss)
+        val_loss_history.append(val_loss)
+        train_auc_history.append(train_auc)
+        val_auc_history.append(val_auc)
+        
         scheduler.step(val_loss)
         
         # Early stopping
@@ -173,7 +186,7 @@ if not os.path.exists('models/model1_improved_cnn.pth'):
             best_val_loss = val_loss
             patience_counter = 0
             # Save best model
-            torch.save(model1.state_dict(), 'models/model1_improved_cnn.pth')
+            torch.save(model1.state_dict(), 'models/model2_improved_cnn.pth')
         else:
             patience_counter += 1
             if patience_counter >= patience:
@@ -181,13 +194,44 @@ if not os.path.exists('models/model1_improved_cnn.pth'):
                 break
 
 
-    model1_result = test_step(model= model1,
-                            dataloader= test_dataloader,
-                            loss_fn= lossfn1,
-                            device= device,
-                            verbose= True)
+    print("\n" + "="*60)
+    print("RUNNING FINAL TEST EVALUATION")
+    print("="*60)
+        
+    model1.load_state_dict(torch.load('models/model2_improved_cnn.pth'))
+        
+    test_loss, test_auc, test_accuracy, all_preds, all_labels, all_preds_probs = test_step(model=model1,
+                                                                                            dataloader=test_dataloader,
+                                                                                            loss_fn=lossfn1,
+                                                                                            device=device,
+                                                                                            verbose=True)
+        
+    # Calculate F1 score
+    from sklearn.metrics import f1_score
+    f1 = f1_score(all_labels, all_preds, average='weighted')
+        
+        
+    epochs_run = len(train_loss_history)
 
-elif not os.path.exists('models/model_resnet152.pth'):
+    log_and_plot(run_name="ResNet152 with class weights",
+                 model_type="ResNet152",
+                 accuracy=test_auc * 100,
+                 y_true=all_labels,
+                 y_pred=all_preds,
+                 y_prob=all_preds_probs,
+                 auc_score=test_auc,
+                 f1_score=f1_score(all_labels, all_preds, average='weighted'),
+                 val_loss=best_val_loss,
+                 epochs=epochs_run,
+                 threshold=0.55,
+                 train_losses=train_loss_history,
+                 val_losses=val_loss_history,
+                 train_aucs=train_auc_history,
+                 val_aucs=val_auc_history,
+                 hp_notes="hu=32, lr=1e-3, class_weights=True",
+                 notes="Added class weights to ResNet loss")
+
+elif not os.path.exists('models/model2_resnet152.pth'):
     os.system('python transfer_training_code/resnet152.py')
 
 else :

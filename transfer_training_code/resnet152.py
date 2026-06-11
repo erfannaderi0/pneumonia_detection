@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import module
 from module import *
 from tqdm.auto import tqdm
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
 
 
 if __name__ == '__main__':
@@ -60,7 +62,7 @@ if __name__ == '__main__':
                             for x in ['val', 'test']}
     val_dataloader = val_test_dataloaders['val']
     test_dataloader = val_test_dataloaders['test']
-    if not os.path.exists('models/model_resnet152.pth'):
+    if not os.path.exists('models/model2_resnet152.pth'):
         model_res152 = models.resnet152(weights='IMAGENET1K_V1')
 
         for params in model_res152.parameters():
@@ -84,7 +86,11 @@ if __name__ == '__main__':
                                                         factor=0.5,
                                                         patience=3)
 
-        loss_fn = nn.CrossEntropyLoss()
+        y_train = [label for _, label in image_datasets['train'].samples]
+        class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+        class_weights_tensor = torch.FloatTensor(class_weights).to(device)
+
+        loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor)
 
         epochs = 10
 
@@ -112,10 +118,10 @@ if __name__ == '__main__':
                 
             # Early stopping
             if val_loss < best_val_loss:
-                best_val_loss = val_loss
+                best_val_loss = float('inf')
                 patience_counter = 0
                 # Save best model
-                torch.save(model_res152.state_dict(), 'models/model_resnet152.pth')
+                torch.save(model_res152.state_dict(), 'models/model2_resnet152.pth')
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
@@ -152,7 +158,7 @@ if __name__ == '__main__':
                 best_val_loss = val_loss
                 patience_counter = 0
                 # Save best model
-                torch.save(model_res152.state_dict(), 'models/model_resnet152.pth')
+                torch.save(model_res152.state_dict(), 'models/model2_resnet152.pth')
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
@@ -160,7 +166,11 @@ if __name__ == '__main__':
                     break
 
     else:
-        loss_fn = nn.CrossEntropyLoss()
+        y_train = [label for _, label in image_datasets['train'].samples]
+        class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+        class_weights_tensor = torch.FloatTensor(class_weights).to(device)
+
+        loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor)
         
         model_res152 = models.resnet152(weights=None)
         
@@ -171,7 +181,7 @@ if __name__ == '__main__':
             nn.Dropout(0.4),
             nn.Linear(256, 2))
         
-        model_path = 'models/model_resnet152.pth'
+        model_path = 'models/model2_resnet152.pth'
         if os.path.exists(model_path):
             state_dict = torch.load(model_path, map_location=device, weights_only=False)
             model_res152.load_state_dict(state_dict)
