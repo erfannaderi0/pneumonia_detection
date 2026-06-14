@@ -24,8 +24,8 @@ if __name__ == '__main__':
     torch.manual_seed(42)
 
     # ImageNet statistics
-    imagenet_mean = [0.485, 0.456, 0.406]
-    imagenet_std = [0.229, 0.224, 0.225]
+    xray_mean = [0.482, 0.482, 0.482]
+    xray_std  = [0.234, 0.234, 0.234]
 
     data_transforms = {
         'train': transforms.Compose([
@@ -33,18 +33,19 @@ if __name__ == '__main__':
             transforms.Grayscale(num_output_channels=3),
             transforms.RandomRotation(10),
             transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),
             transforms.ToTensor(),
-            transforms.Normalize(imagenet_mean, imagenet_std)]),
+            transforms.Normalize(xray_mean, xray_std)]),
         'val': transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
-            transforms.Normalize(imagenet_mean, imagenet_std)]),
+            transforms.Normalize(xray_mean, xray_std)]),
         'test': transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
-            transforms.Normalize(imagenet_mean, imagenet_std)])
+            transforms.Normalize(xray_mean, xray_std)])
     }
 
     data_dir = './data/reorganized_chest_xray'
@@ -129,7 +130,14 @@ if __name__ == '__main__':
                     break
         
         for param in model_res152.parameters():
+            param.requires_grad = False  # re-freeze everything first
+        for param in model_res152.layer4.parameters():
             param.requires_grad = True
+        for param in model_res152.layer3.parameters():
+            param.requires_grad = True
+        for param in model_res152.fc.parameters():
+            param.requires_grad = True
+        print("\nPhase 2: Unfroze layer3, layer4, fc — fine-tuning with lr=1e-5")
 
         optimizer_ft = optim.Adam(model_res152.parameters(), lr=1e-5)
         exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=5, gamma=0.1)

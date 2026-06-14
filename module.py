@@ -123,6 +123,7 @@ def train_step(model: nn.Module,
         
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # prevent gradient spikes
         optimizer.step()
     
     train_loss /= len(dataloader)
