@@ -200,12 +200,16 @@ if not os.path.exists('models/model2_improved_cnn.pth'):
         
     model1.load_state_dict(torch.load('models/model2_improved_cnn.pth'))
         
-    test_loss, test_auc, test_accuracy, all_preds, all_labels, all_preds_probs = test_step(model=model1,
-                                                                                            dataloader=test_dataloader,
-                                                                                            loss_fn=lossfn1,
-                                                                                            device=device,
-                                                                                            verbose=True)
-        
+    print("\nFinding optimal threshold on validation set...")
+    optimal_threshold, best_f1_val = find_optimal_threshold(model1, val_dataloader, device)
+
+    test_loss, test_auc, test_accuracy, all_preds, all_labels, all_preds_probs = test_with_threshold(model=model1,
+                                                                                    dataloader=test_dataloader,
+                                                                                    loss_fn=lossfn1,
+                                                                                    device=device,
+                                                                                    threshold=optimal_threshold,
+                                                                                    verbose=True)
+
     # Calculate F1 score
     from sklearn.metrics import f1_score
     f1 = f1_score(all_labels, all_preds, average='weighted')

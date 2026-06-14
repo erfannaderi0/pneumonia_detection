@@ -365,7 +365,7 @@ def test_with_threshold(model: nn.Module,
         print(confusion_matrix(all_labels, all_preds))
         print("="*50)
     
-    return test_loss, test_auc, accuracy, all_preds, all_labels
+    return test_loss, test_auc, accuracy, all_preds, all_labels, all_preds_probs
 
 
 def print_result_simple(result):
@@ -547,7 +547,7 @@ def example_usage():
                 nn.Linear(256, 2)
             )
             
-            model_path = 'models/model_resnet152.pth'
+            model_path = 'models/model2_resnet152.pth'
             if os.path.exists(model_path):
                 model_res152.load_state_dict(torch.load(model_path, map_location=device))
                 print("✅ ResNet152 model loaded successfully")
@@ -563,8 +563,8 @@ def example_usage():
             # Load your custom CNN model
             from module import improved_cnn
             
-            custom_model = improved_cnn(input_shape=1, hidden_units=10, output_shape=2)
-            model_path = 'models/model1_improved_cnn.pth'
+            custom_model = improved_cnn(input_shape=1, hidden_units=32, output_shape=2)
+            model_path = 'models/model2_improved_cnn.pth'
             
             if os.path.exists(model_path):
                 custom_model.load_state_dict(torch.load(model_path, map_location=device))

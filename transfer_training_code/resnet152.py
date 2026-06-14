@@ -118,7 +118,7 @@ if __name__ == '__main__':
                 
             # Early stopping
             if val_loss < best_val_loss:
-                best_val_loss = float('inf')
+                best_val_loss = val_loss
                 patience_counter = 0
                 # Save best model
                 torch.save(model_res152.state_dict(), 'models/model2_resnet152.pth')
