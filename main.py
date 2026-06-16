@@ -66,9 +66,10 @@ for split in counts:
 
 
 train_transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((256,256)),
+    transforms.CenterCrop(224),
     transforms.Grayscale(num_output_channels=1),
-    transforms.RandomHorizontalFlip(p=0.5),
+    #transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomRotation(degrees=10),
     transforms.RandomAffine(degrees=0, translate=(0.05, 0.05), scale=(0.9, 1.1)),
     transforms.ColorJitter(brightness=0.2, contrast=0.2),
@@ -77,7 +78,8 @@ train_transform = transforms.Compose([
 ])
 
 val_test_transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((256,256)),
+    transforms.CenterCrop(224),
     transforms.Grayscale(num_output_channels=1),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5], std=[0.5])
@@ -141,6 +143,13 @@ class_weights = torch.FloatTensor(class_weights).to(device)
 lossfn1 = nn.CrossEntropyLoss(weight=class_weights)
 
 if not os.path.exists('models/model2_improved_cnn.pth'):
+
+    # ── Ask for a run name before training starts ──────────────────
+    print("\n" + "─" * 50)
+    cnn_run_name = input("Enter a name for this CNN run (e.g. 'CNN v1 class-weights'): ").strip()
+    if not cnn_run_name:
+        cnn_run_name = "Improved CNN"
+    print("─" * 50 + "\n")
 
     optimizer1 = torch.optim.Adam(params= model1.parameters(), lr= 1e-3)
 
@@ -217,8 +226,8 @@ if not os.path.exists('models/model2_improved_cnn.pth'):
         
     epochs_run = len(train_loss_history)
 
-    log_and_plot(run_name="ResNet152 with class weights",
-                 model_type="ResNet152",
+    log_and_plot(run_name=cnn_run_name,
+                 model_type="Custom CNN",
                  accuracy=test_auc * 100,
                  y_true=all_labels,
                  y_pred=all_preds,
@@ -233,10 +242,9 @@ if not os.path.exists('models/model2_improved_cnn.pth'):
                  train_aucs=train_auc_history,
                  val_aucs=val_auc_history,
                  hp_notes="hu=32, lr=1e-3, class_weights=True",
-                 notes="Added class weights to ResNet loss")
+                 notes="Improved CNN with class weights")
 
-elif not os.path.exists('models/model2_resnet152.pth'):
+if not os.path.exists('models/model2_resnet152.pth'):
     os.system('python transfer_training_code/resnet152.py')
 
-else :
-    example_usage()
+example_usage()
