@@ -142,7 +142,7 @@ class_weights = torch.FloatTensor(class_weights).to(device)
 
 lossfn1 = nn.CrossEntropyLoss(weight=class_weights)
 
-if not os.path.exists('models/model2_improved_cnn.pth'):
+if not os.path.exists('models/model2.4_improved_cnn.pth'):
 
     # ── Ask for a run name before training starts ──────────────────
     print("\n" + "─" * 50)

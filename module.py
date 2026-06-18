@@ -246,7 +246,13 @@ def test_step(model: nn.Module,
     
     return test_loss, test_auc, accuracy, all_preds, all_labels, all_preds_probs
 
-def find_optimal_threshold(model, dataloader, device):
+def find_optimal_threshold(model, dataloader, device, metric='precision'):
+    """
+    Find optimal threshold based on different metrics.
+    
+    Args:
+        metric: 'precision', 'specificity', 'f1', or 'f1_binary'
+    """
     model.eval()
     all_probs = []
     all_labels = []
@@ -259,20 +265,50 @@ def find_optimal_threshold(model, dataloader, device):
             all_probs.extend(probs.cpu().numpy())
             all_labels.extend(y.cpu().numpy())
     
-    thresholds = np.arange(0.3, 0.8, 0.05)
-    best_f1 = 0
+    thresholds = np.arange(0.3, 0.9, 0.05)
+    best_score = 0
     best_threshold = 0.5
     
     for threshold in thresholds:
         preds = (np.array(all_probs) >= threshold).astype(int)
-        f1 = f1_score(all_labels, preds, average='weighted')
         
-        if f1 > best_f1:
-            best_f1 = f1
+        tn, fp, fn, tp = confusion_matrix(all_labels, preds).ravel()
+
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+        print(
+            f"thr={threshold:.2f} "
+            f"spec={specificity:.4f} "
+            f"prec={precision:.4f} "
+            f"rec={recall:.4f} "
+            f"FP={fp} "
+            f"FN={fn}"
+        )
+        
+        if metric == 'precision':
+            # Maximize precision (minimizes false positives)
+            from sklearn.metrics import precision_score
+            score = precision_score(all_labels, preds, average='binary', zero_division=0)
+        elif metric == 'specificity':
+            # Maximize specificity (minimizes false positives)
+            tn, fp, fn, tp = confusion_matrix(all_labels, preds).ravel()
+            score = tn / (tn + fp) if (tn + fp) > 0 else 0
+        elif metric == 'f1_binary':
+            # F1 for the positive class only
+            from sklearn.metrics import f1_score
+            score = f1_score(all_labels, preds, average='binary', zero_division=0)
+        else:  # 'f1' (weighted - original)
+            from sklearn.metrics import f1_score
+            score = f1_score(all_labels, preds, average='weighted')
+        
+        if score > best_score:
+            best_score = score
             best_threshold = threshold
     
-    print(f"Optimal threshold: {best_threshold:.2f} (F1: {best_f1:.4f})")
-    return best_threshold, best_f1
+    print(f"Optimal threshold for {metric}: {best_threshold:.2f} (Score: {best_score:.4f})")
+    return best_threshold, best_score
 
 def test_with_threshold(model: nn.Module,
                         dataloader: torch.utils.data.DataLoader,
@@ -339,6 +375,30 @@ def test_with_threshold(model: nn.Module,
     all_labels = np.array(all_labels)
     all_preds = np.array(all_preds)
     all_preds_probs = np.array(all_preds_probs)
+    
+    # ==============================
+    # False Positive Analysis
+    # ==============================
+    fp_mask = (all_preds == 1) & (all_labels == 0)
+
+    if np.any(fp_mask):
+        fp_probs = all_preds_probs[fp_mask]
+
+        print("\n" + "=" * 50)
+        print("FALSE POSITIVE ANALYSIS")
+        print("=" * 50)
+        print(f"Number of False Positives: {len(fp_probs)}")
+        print(f"Min Probability : {np.min(fp_probs):.4f}")
+        print(f"Mean Probability: {np.mean(fp_probs):.4f}")
+        print(f"Max Probability : {np.max(fp_probs):.4f}")
+
+        # Show highest-confidence false positives
+        top_fp = np.sort(fp_probs)[::-1][:10]
+
+        print("\nTop False Positive Probabilities:")
+        for i, p in enumerate(top_fp, 1):
+            print(f"{i:2d}. {p:.4f}")
+
     
     # Calculate metrics
     accuracy = accuracy_score(all_labels, all_preds)

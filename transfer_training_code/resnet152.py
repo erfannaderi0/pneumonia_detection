@@ -11,7 +11,12 @@ import copy
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import module
 from module import *
-from results_tracker import log_and_plot
+from results_tracker import (
+    log_and_plot,
+    plot_calibration_curve,
+    start_terminal_log,
+    stop_terminal_log
+)
 from tqdm.auto import tqdm
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
@@ -109,6 +114,8 @@ if __name__ == '__main__':
             resnet_run_name = "ResNet152"
         print("─" * 50 + "\n")
         
+        log_path = start_terminal_log(resnet_run_name)
+        
         optimizer_ft = optim.Adam(model_res152.fc.parameters(), lr=0.001)
         exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft,
                                                         mode='min',
@@ -117,6 +124,10 @@ if __name__ == '__main__':
 
         y_train = [label for _, label in image_datasets['train'].samples]
         class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+        
+        print("Classes:", image_datasets['train'].classes)
+        print("Class weights:", class_weights)
+        
         class_weights_tensor = torch.FloatTensor(class_weights).to(device)
 
         loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor)
@@ -225,8 +236,9 @@ if __name__ == '__main__':
 
         model_res152.load_state_dict(torch.load('models/model2_resnet152.pth'))
 
-        print("\nFinding optimal threshold on validation set...")
-        optimal_threshold, best_f1_val = find_optimal_threshold(model_res152, val_dataloader, device)
+        #print("\nFinding optimal threshold on validation set...")
+        #optimal_threshold, best_score = find_optimal_threshold(model_res152, val_dataloader, device)
+        optimal_threshold = 0.7
 
         test_loss, test_auc, test_accuracy, all_preds, all_labels, all_preds_probs = test_with_threshold(
             model=model_res152,
@@ -247,27 +259,56 @@ if __name__ == '__main__':
         log_and_plot(
             run_name=resnet_run_name,
             model_type="ResNet152",
-            accuracy=test_auc * 100,
+
+            accuracy=test_accuracy * 100,
             y_true=all_labels,
             y_pred=all_preds,
             y_prob=all_preds_probs,
+
             auc_score=test_auc,
             f1_score=f1,
             val_loss=best_val_loss,
-            epochs=len(combined_train_losses),
+            test_loss=test_loss,
+
+            epochs_trained=len(combined_train_losses),
+            max_epochs=20,
+
             threshold=optimal_threshold,
+
             train_losses=combined_train_losses,
             val_losses=combined_val_losses,
             train_aucs=combined_train_aucs,
             val_aucs=combined_val_aucs,
-            hp_notes="lr_p1=1e-3, lr_p2=1e-5, dropout=0.4, class_weights=True",
-            notes="Two-phase fine-tuning: fc only → layer3+layer4+fc",
+
+            lr=1e-5,
+            batch_size=32,
+            optimizer="Adam",
+            class_weighting=True,
+            dropout_rate=0.4,
+            pretrained=True,
+
+            img_size=224,
+            log_file=log_path,
+            notes="Phase1 lr=1e-3 fc-only | Phase2 lr=1e-5 layer3+layer4+fc"
         )
 
     else:
+        
+        best_val_loss = None
+
+        combined_train_losses = []
+        combined_val_losses = []
+
+        combined_train_aucs = []
+        combined_val_aucs = []
+        
         # ── Model already trained: load and evaluate ────────────────────────
         y_train = [label for _, label in image_datasets['train'].samples]
         class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+        
+        print("Classes:", image_datasets['train'].classes)
+        print("Class weights:", class_weights)
+        
         class_weights_tensor = torch.FloatTensor(class_weights).to(device)
 
         loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor)
@@ -297,9 +338,12 @@ if __name__ == '__main__':
         if not resnet_run_name:
             resnet_run_name = "ResNet152"
         print("─" * 50 + "\n")
+        
+        log_path = start_terminal_log(resnet_run_name)
 
-        print("\nFinding optimal threshold on validation set...")
-        optimal_threshold, best_f1_val = find_optimal_threshold(model_res152, val_dataloader, device)
+        #print("\nFinding optimal threshold on validation set...")
+        #optimal_threshold, best_score = find_optimal_threshold(model_res152, val_dataloader, device)
+        optimal_threshold = 0.7
 
         test_loss, test_auc, test_accuracy, all_preds, all_labels, all_preds_probs = test_with_threshold(
             model=model_res152,
@@ -347,17 +391,37 @@ if __name__ == '__main__':
         log_and_plot(
             run_name=resnet_run_name,
             model_type="ResNet152",
-            accuracy=test_auc * 100,
+
+            accuracy=test_accuracy * 100,
             y_true=all_labels,
             y_pred=all_preds,
             y_prob=all_preds_probs,
+
             auc_score=test_auc,
             f1_score=f1,
-            val_loss=None,
-            epochs=None,
+            val_loss=best_val_loss,
+            test_loss=test_loss,
+
+            epochs_trained=len(combined_train_losses),
+            max_epochs=20,
+
             threshold=optimal_threshold,
-            hp_notes="lr_p1=1e-3, lr_p2=1e-5, dropout=0.4, class_weights=True",
-            notes="Loaded from checkpoint — evaluation only",
+
+            train_losses=combined_train_losses,
+            val_losses=combined_val_losses,
+            train_aucs=combined_train_aucs,
+            val_aucs=combined_val_aucs,
+
+            lr=1e-5,
+            batch_size=32,
+            optimizer="Adam",
+            class_weighting=True,
+            dropout_rate=0.4,
+            pretrained=True,
+
+            img_size=224,
+            log_file=log_path,
+            notes="Phase1 lr=1e-3 fc-only | Phase2 lr=1e-5 layer3+layer4+fc"
         )
     
     example_usage()
