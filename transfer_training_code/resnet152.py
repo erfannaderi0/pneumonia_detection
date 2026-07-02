@@ -54,21 +54,23 @@ if __name__ == '__main__':
 
     data_transforms = {
         'train': transforms.Compose([
-            CropBorders(),
             transforms.Resize((224, 224)),
+            module.CropBorders(threshold=10, crop_percent=0.1, output_size=(224, 224)),
             transforms.Grayscale(num_output_channels=3),
             transforms.RandomRotation(10),
-            transforms.RandomHorizontalFlip(),
+            transforms.RandomAffine(degrees=7, translate=(0.03, 0.03), scale=(0.95, 1.05)),
             transforms.ColorJitter(brightness=0.2, contrast=0.2),
             transforms.ToTensor(),
             transforms.Normalize(xray_mean, xray_std)]),
         'val': transforms.Compose([
             transforms.Resize((224, 224)),
+            module.CropBorders(threshold=10, crop_percent=0.1, output_size=(224, 224)),
             transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
             transforms.Normalize(xray_mean, xray_std)]),
         'test': transforms.Compose([
             transforms.Resize((224, 224)),
+            module.CropBorders(threshold=10, crop_percent=0.1, output_size=(224, 224)),
             transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
             transforms.Normalize(xray_mean, xray_std)])

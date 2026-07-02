@@ -1182,5 +1182,65 @@ class Plot:
         return fig
 
 
+class CropBorders:
+    def __init__(self, threshold=10, crop_percent=0, output_size=None):
+        """
+        Args:
+            threshold: Pixel intensity threshold for border detection
+            crop_percent: Percentage to crop from each side (0-0.5)
+            output_size: Tuple (h, w) to resize output to, e.g. (224, 224)
+        """
+        self.threshold = threshold
+        self.crop_percent = crop_percent
+        self.output_size = output_size
+    
+    def __call__(self, image):
+        if isinstance(image, Image.Image):
+            img_array = np.array(image)
+        else:
+            img_array = image
+        
+        # 1. Threshold-based border detection
+        if len(img_array.shape) == 2:
+            non_border = np.where(img_array > self.threshold)
+            if len(non_border[0]) > 0 and len(non_border[1]) > 0:
+                top = np.min(non_border[0])
+                bottom = np.max(non_border[0])
+                left = np.min(non_border[1])
+                right = np.max(non_border[1])
+                img_array = img_array[top:bottom+1, left:right+1]
+        else:
+            gray = np.mean(img_array, axis=2)
+            non_border = np.where(gray > self.threshold)
+            if len(non_border[0]) > 0 and len(non_border[1]) > 0:
+                top = np.min(non_border[0])
+                bottom = np.max(non_border[0])
+                left = np.min(non_border[1])
+                right = np.max(non_border[1])
+                img_array = img_array[top:bottom+1, left:right+1, :]
+        
+        # 2. Percentage-based cropping
+        if self.crop_percent > 0:
+            h, w = img_array.shape[:2]
+            crop_h = int(h * self.crop_percent)
+            crop_w = int(w * self.crop_percent)
+            if len(img_array.shape) == 2:
+                img_array = img_array[crop_h:h-crop_h, crop_w:w-crop_w]
+            else:
+                img_array = img_array[crop_h:h-crop_h, crop_w:w-crop_w, :]
+        
+        # 3. Convert back to PIL
+        if len(img_array.shape) == 2:
+            result = Image.fromarray(img_array.astype(np.uint8), mode='L')
+        else:
+            result = Image.fromarray(img_array.astype(np.uint8))
+        
+        # 4. Resize to fixed output size if specified
+        if self.output_size is not None:
+            result = result.resize((self.output_size[1], self.output_size[0]), Image.BILINEAR)
+        
+        return result
+    
+
 if __name__ == "__main__":
     example_usage()
