@@ -12,7 +12,7 @@ Stores runs in:  results_log/runs.json
 Saves plots to:  results_log/plots/
 Saves logs to:   results_log/terminal_logs/
 
-Fields tracked in runs.json (v3):
+Fields tracked in runs.json (v4):
     Identity
         id, date, run_name, model_type, notes
 
@@ -32,6 +32,7 @@ Fields tracked in runs.json (v3):
         early_stop_patience
         best_epoch      (epoch with best val metric)
         train_time_secs
+        epoch_history   (NEW: stores all epoch-by-epoch metrics for learning curves)
 
     Hyperparameters (structured)
         lr, lr_scheduler, batch_size, optimizer, weight_decay
@@ -415,6 +416,11 @@ def print_runs_table(runs: list[dict]):
             f"{marker}"
         )
         print(row)
+
+        # Check if epoch history exists
+        has_epoch_history = r.get("epoch_history") and len(r.get("epoch_history", {}).get("train_loss", [])) > 0
+        if has_epoch_history:
+            print(f"     ↳ epoch history: {len(r['epoch_history']['train_loss'])} epochs recorded")
 
         # Per-class metrics line
         pc = r.get("per_class_metrics", {})
@@ -936,6 +942,7 @@ def plot_diagnostic_summary(
     y_true, y_pred, y_prob,
     train_losses=None, val_losses=None,
     train_aucs=None,  val_aucs=None,
+    epoch_history=None,  # NEW: can pass full epoch history dict
     threshold=0.5,
     run_name="",
     class_names=("NORMAL", "PNEUMONIA"),
@@ -954,6 +961,7 @@ def plot_diagnostic_summary(
         val_losses   : (optional) list of val losses per epoch
         train_aucs   : (optional) list of training AUC per epoch
         val_aucs     : (optional) list of val AUC per epoch
+        epoch_history: (NEW) dict with 'train_loss', 'val_loss', 'train_auc', 'val_auc'
         threshold    : decision threshold
         run_name     : title prefix
         class_names  : class names
@@ -961,6 +969,13 @@ def plot_diagnostic_summary(
     Returns:
         matplotlib Figure
     """
+    # Extract data from epoch_history if provided and individual lists are None
+    if epoch_history and train_losses is None:
+        train_losses = epoch_history.get("train_loss", [])
+        val_losses = epoch_history.get("val_loss", [])
+        train_aucs = epoch_history.get("train_auc", [])
+        val_aucs = epoch_history.get("val_auc", [])
+    
     fig = plt.figure(figsize=(24, 10))
     fig.suptitle(f"Diagnostic summary — {run_name}", fontsize=15, y=1.01)
     gs = gridspec.GridSpec(2, 4, figure=fig, hspace=0.48, wspace=0.38)
@@ -1059,38 +1074,40 @@ def plot_diagnostic_summary(
     ax_pd.set_title("Probability distribution")
     ax_pd.legend(fontsize=8)
 
-    # 6 — Learning curve (loss)
-    if train_losses and val_losses:
+    # 6 — Learning curve (loss) - IMPROVED
+    if train_losses and val_losses and len(train_losses) > 0:
         ep = range(1, len(train_losses) + 1)
         ax_lc_loss.plot(ep, train_losses, color="#378ADD", lw=2, label="Train")
-        ax_lc_loss.plot(ep, val_losses,   color="#D85A30", lw=2,
+        ax_lc_loss.plot(ep, val_losses, color="#D85A30", lw=2,
                         linestyle="--", label="Val")
         best_ep = int(np.argmin(val_losses)) + 1
         ax_lc_loss.axvline(best_ep, color="#1D9E75", lw=1, linestyle=":",
                            label=f"Best ep {best_ep}")
         ax_lc_loss.set_xlabel("Epoch")
         ax_lc_loss.set_ylabel("Loss")
-        ax_lc_loss.set_title("Learning curves (loss)")
+        ax_lc_loss.set_title(f"Learning curves (loss)\n{len(train_losses)} epochs")
         ax_lc_loss.legend(fontsize=8)
+        ax_lc_loss.grid(True, alpha=0.3)
     else:
         ax_lc_loss.text(0.5, 0.5, "No epoch data\nlogged for this run",
                         ha="center", va="center", transform=ax_lc_loss.transAxes,
                         fontsize=10, color="#888888")
         ax_lc_loss.set_title("Learning curves (loss)")
 
-    # 7 — Learning curve (AUC)
-    if train_aucs and val_aucs:
+    # 7 — Learning curve (AUC) - IMPROVED
+    if train_aucs and val_aucs and len(train_aucs) > 0:
         ep = range(1, len(train_aucs) + 1)
         ax_lc_auc.plot(ep, train_aucs, color="#378ADD", lw=2, label="Train")
-        ax_lc_auc.plot(ep, val_aucs,   color="#D85A30", lw=2,
+        ax_lc_auc.plot(ep, val_aucs, color="#D85A30", lw=2,
                        linestyle="--", label="Val")
         best_ep_a = int(np.argmax(val_aucs)) + 1
         ax_lc_auc.axvline(best_ep_a, color="#1D9E75", lw=1, linestyle=":",
                           label=f"Best ep {best_ep_a}")
         ax_lc_auc.set_xlabel("Epoch")
         ax_lc_auc.set_ylabel("AUC")
-        ax_lc_auc.set_title("Learning curves (AUC)")
+        ax_lc_auc.set_title(f"Learning curves (AUC)\n{len(train_aucs)} epochs")
         ax_lc_auc.legend(fontsize=8)
+        ax_lc_auc.grid(True, alpha=0.3)
     else:
         ax_lc_auc.text(0.5, 0.5, "No AUC epoch data\nlogged for this run",
                        ha="center", va="center", transform=ax_lc_auc.transAxes,
@@ -1319,6 +1336,7 @@ def log_and_plot(
     val_losses              = None,
     train_aucs              = None,
     val_aucs                = None,
+    epoch_history           = None,  # NEW: dict containing all epoch data
     # ── Structured hyperparameters ─────────────────────────────────
     lr: float               = None,
     lr_scheduler: str       = None,
@@ -1353,6 +1371,15 @@ def log_and_plot(
     Metrics that can be derived from y_true / y_pred / y_prob (MCC, ECE,
     per-class metrics, P@R90/95) are computed automatically — you don't
     need to pass them in.
+
+    NEW: epoch_history parameter allows you to pass all epoch data in one dict.
+    Example:
+        epoch_history = {
+            "train_loss": [...],
+            "val_loss": [...],
+            "train_auc": [...],
+            "val_auc": [...]
+        }
 
     Minimal example — at the training loop::
 
@@ -1405,6 +1432,19 @@ def log_and_plot(
     y_true_arr = np.array(y_true)
     y_pred_arr = np.array(y_pred)
     y_prob_arr = np.array(y_prob)
+
+    # ── Extract data from epoch_history if provided ────────────────
+    if epoch_history is not None:
+        if train_losses is None:
+            train_losses = epoch_history.get("train_loss", [])
+        if val_losses is None:
+            val_losses = epoch_history.get("val_loss", [])
+        if train_aucs is None:
+            train_aucs = epoch_history.get("train_auc", [])
+        if val_aucs is None:
+            val_aucs = epoch_history.get("val_auc", [])
+        # Also get epochs list if available
+        epochs_list = epoch_history.get("epochs", [])
 
     # ── Auto-compute metrics from predictions ──────────────────────
     if auc_score is None:
@@ -1472,6 +1512,23 @@ def log_and_plot(
 
     # ── Build the run record ───────────────────────────────────────
     runs = load_runs()
+    
+    # Build epoch_history dict if individual lists are provided
+    epoch_history_dict = epoch_history
+    if epoch_history_dict is None and (train_losses or val_losses or train_aucs or val_aucs):
+        epoch_history_dict = {}
+        if train_losses:
+            epoch_history_dict["train_loss"] = list(train_losses)
+        if val_losses:
+            epoch_history_dict["val_loss"] = list(val_losses)
+        if train_aucs:
+            epoch_history_dict["train_auc"] = list(train_aucs)
+        if val_aucs:
+            epoch_history_dict["val_auc"] = list(val_aucs)
+        # Add epochs
+        if train_losses and len(train_losses) > 0:
+            epoch_history_dict["epochs"] = list(range(1, len(train_losses) + 1))
+    
     run  = dict(
         name    = run_name,
         model   = model_type,
@@ -1493,6 +1550,8 @@ def log_and_plot(
         max_epochs           = max_epochs,
         early_stop_patience  = early_stop_patience,
         best_epoch           = best_epoch,
+        # NEW: store full epoch history
+        epoch_history        = epoch_history_dict,
         # timing
         train_time_secs = train_time_secs,
         threshold       = threshold,
@@ -1531,14 +1590,27 @@ def log_and_plot(
 
     # ── Generate plots ─────────────────────────────────────────────
     print(f"\n📊  Generating diagnostic plots for '{run_name}' …")
-    plot_diagnostic_summary(
-        y_true=y_true, y_pred=y_pred, y_prob=y_prob,
-        train_losses=train_losses, val_losses=val_losses,
-        train_aucs=train_aucs,     val_aucs=val_aucs,
-        threshold=threshold,
-        run_name=run_name,
-        save=True,
-    )
+    
+    # If we have epoch_history, use it; otherwise use individual lists
+    if epoch_history_dict and (train_losses is None and val_losses is None):
+        # Use epoch_history directly
+        plot_diagnostic_summary(
+            y_true=y_true, y_pred=y_pred, y_prob=y_prob,
+            epoch_history=epoch_history_dict,
+            threshold=threshold,
+            run_name=run_name,
+            save=True,
+        )
+    else:
+        # Use individual lists (backward compatible)
+        plot_diagnostic_summary(
+            y_true=y_true, y_pred=y_pred, y_prob=y_prob,
+            train_losses=train_losses, val_losses=val_losses,
+            train_aucs=train_aucs,     val_aucs=val_aucs,
+            threshold=threshold,
+            run_name=run_name,
+            save=True,
+        )
 
     if len(runs) >= 2:
         print("📊  Updating cross-run comparison chart …")
