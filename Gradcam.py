@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from pathlib import Path
 from module import improved_cnn
+from module import CropBorders
 
 
 # ─────────────────────────────────────────────
@@ -108,7 +109,7 @@ def load_resnet152(device):
         nn.Dropout(0.4),
         nn.Linear(256, 2)
     )
-    path = 'models/model2_resnet152.pth'
+    path = 'models/model2.5final_resnet152.pth'
     #path = 'models/model2_improved_cnn.pth'
     if not os.path.exists(path):
         print(f"❌ Model not found: {path}")
@@ -139,14 +140,18 @@ def load_custom_cnn(device):
 
 def preprocess(image_path: str, model_type: str):
     img = Image.open(image_path).convert('RGB')
-
+    xray_mean = [0.482, 0.482, 0.482]
+    xray_std  = [0.234, 0.234, 0.234]
+    
     if model_type == 'resnet152':
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
+            #CropBorders(threshold=10, crop_percent=0.2, output_size=(224, 224)),
+            CropBorders(),
             transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
-            transforms.Normalize([0.482, 0.482, 0.482], [0.234, 0.234, 0.234])
-        ])
+            transforms.Normalize(xray_mean, xray_std)])
+
     else:
         transform = transforms.Compose([
             transforms.Resize((224, 224)),

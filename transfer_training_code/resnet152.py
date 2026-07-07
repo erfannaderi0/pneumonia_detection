@@ -22,6 +22,7 @@ from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 from torchvision.transforms import functional as F
 from sklearn.metrics import f1_score
+import json
 
 
 class CropBorders:
@@ -91,6 +92,8 @@ if __name__ == '__main__':
                             for x in ['val', 'test']}
     val_dataloader = val_test_dataloaders['val']
     test_dataloader = val_test_dataloaders['test']
+    
+    #if not os.path.exists('models/model2.5final_resnet152.pth'):
     if not os.path.exists('models/model2_resnet152.pth'):
         model_res152 = models.resnet152(weights='IMAGENET1K_V1')
 
@@ -140,9 +143,23 @@ if __name__ == '__main__':
         patience = 5
         patience_counter = 0
 
-        train_loss_history, val_loss_history = [], []
-        train_auc_history,  val_auc_history  = [], []
+        epoch_history = {
+            "train_loss": [],
+            "val_loss": [],
+            "train_auc": [],
+            "val_auc": [],
+            "epochs": [],
+            "phase": []  # Track which phase each epoch belongs to
+        }
+        
+        train_loss_history_p1, val_loss_history_p1 = [], []
+        train_auc_history_p1,  val_auc_history_p1  = [], []
 
+        # ── PHASE 1: Train only FC layer ──────────────────────────────────
+        print("\n" + "="*60)
+        print("PHASE 1: Training FC layer only (lr=1e-3)")
+        print("="*60 + "\n")
+        
         for epoch in tqdm(range(epochs)):
             train_loss, train_auc = train_step(model=model_res152,
                                             dataloader=train_dataloader,
@@ -159,10 +176,19 @@ if __name__ == '__main__':
             print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
             print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
 
-            train_loss_history.append(train_loss)
-            val_loss_history.append(val_loss)
-            train_auc_history.append(train_auc)
-            val_auc_history.append(val_auc)
+            # Store in phase-specific lists
+            train_loss_history_p1.append(train_loss)
+            val_loss_history_p1.append(val_loss)
+            train_auc_history_p1.append(train_auc)
+            val_auc_history_p1.append(val_auc)
+            
+            # Store in combined epoch history
+            epoch_history["train_loss"].append(train_loss)
+            epoch_history["val_loss"].append(val_loss)
+            epoch_history["train_auc"].append(train_auc)
+            epoch_history["val_auc"].append(val_auc)
+            epoch_history["epochs"].append(epoch + 1)
+            epoch_history["phase"].append("phase1")
                 
             exp_lr_scheduler.step(val_loss)
                 
@@ -177,6 +203,11 @@ if __name__ == '__main__':
                 if patience_counter >= patience:
                     print(f"Early stopping at epoch {epoch+1}")
                     break
+
+        # ── PHASE 2: Fine-tune with unfrozen layers ──────────────────────
+        print("\n" + "="*60)
+        print("PHASE 2: Fine-tuning layer3, layer4, fc (lr=1e-5)")
+        print("="*60 + "\n")
         
         for param in model_res152.parameters():
             param.requires_grad = False  # re-freeze everything first
@@ -186,7 +217,7 @@ if __name__ == '__main__':
             param.requires_grad = True
         for param in model_res152.fc.parameters():
             param.requires_grad = True
-        print("\nPhase 2: Unfroze layer3, layer4, fc — fine-tuning with lr=1e-5")
+        print("Unfroze layer3, layer4, fc — fine-tuning with lr=1e-5")
 
         optimizer_ft = optim.Adam(model_res152.parameters(), lr=1e-5)
         exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=5, gamma=0.1)
@@ -212,14 +243,23 @@ if __name__ == '__main__':
             print(f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}")
             print(f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
 
+            # Store in phase-specific lists
             train_loss_history_p2.append(train_loss)
             val_loss_history_p2.append(val_loss)
             train_auc_history_p2.append(train_auc)
             val_auc_history_p2.append(val_auc)
+            
+            # Store in combined epoch history
+            epoch_history["train_loss"].append(train_loss)
+            epoch_history["val_loss"].append(val_loss)
+            epoch_history["train_auc"].append(train_auc)
+            epoch_history["val_auc"].append(val_auc)
+            epoch_history["epochs"].append(epoch + 1 + len(train_loss_history_p1))  # Continue epoch numbering
+            epoch_history["phase"].append("phase2")
                 
             exp_lr_scheduler.step()
                 
-            # Early stopping
+            # Early stopping (track best separately for phase 2)
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
@@ -236,11 +276,14 @@ if __name__ == '__main__':
         print("RUNNING FINAL TEST EVALUATION")
         print("="*60)
 
+        history_path = 'models/model2_resnet152_history.json'
+        with open(history_path, 'w') as f:
+            json.dump(epoch_history, f)
+        print(f"✅ Epoch history saved to {history_path}")
+        
         model_res152.load_state_dict(torch.load('models/model2_resnet152.pth'))
 
-        #print("\nFinding optimal threshold on validation set...")
-        #optimal_threshold, best_score = find_optimal_threshold(model_res152, val_dataloader, device)
-        optimal_threshold = 0.7
+        optimal_threshold = 0.98
 
         test_loss, test_auc, test_accuracy, all_preds, all_labels, all_preds_probs = test_with_threshold(
             model=model_res152,
@@ -252,12 +295,16 @@ if __name__ == '__main__':
         )
 
         f1 = f1_score(all_labels, all_preds, average='weighted')
+        
+        # Print summary of epoch history
+        print(f"\n📊 Epoch history summary:")
+        print(f"   Total epochs recorded: {len(epoch_history['train_loss'])}")
+        print(f"   Phase 1 epochs: {len(train_loss_history_p1)}")
+        print(f"   Phase 2 epochs: {len(train_loss_history_p2)}")
 
-        combined_train_losses = train_loss_history + train_loss_history_p2
-        combined_val_losses   = val_loss_history   + val_loss_history_p2
-        combined_train_aucs   = train_auc_history  + train_auc_history_p2
-        combined_val_aucs     = val_auc_history    + val_auc_history_p2
-
+        # ====================================================================
+        # NEW: Use epoch_history parameter instead of individual lists
+        # ====================================================================
         log_and_plot(
             run_name=resnet_run_name,
             model_type="ResNet152",
@@ -269,18 +316,22 @@ if __name__ == '__main__':
 
             auc_score=test_auc,
             f1_score=f1,
-            val_loss=best_val_loss,
+            val_loss=best_val_loss,  # Best val loss from phase 1
             test_loss=test_loss,
 
-            epochs_trained=len(combined_train_losses),
+            epochs_trained=len(epoch_history["train_loss"]),
             max_epochs=20,
 
             threshold=optimal_threshold,
 
-            train_losses=combined_train_losses,
-            val_losses=combined_val_losses,
-            train_aucs=combined_train_aucs,
-            val_aucs=combined_val_aucs,
+            # NEW: Pass epoch_history instead of individual lists
+            epoch_history=epoch_history,
+
+            # Also pass individual lists for backward compatibility
+            train_losses=epoch_history["train_loss"],
+            val_losses=epoch_history["val_loss"],
+            train_aucs=epoch_history["train_auc"],
+            val_aucs=epoch_history["val_auc"],
 
             lr=1e-5,
             batch_size=32,
@@ -295,14 +346,30 @@ if __name__ == '__main__':
         )
 
     else:
+        # ================================================================
+        # LOAD EXISTING MODEL
+        # ================================================================
         
         best_val_loss = None
 
-        combined_train_losses = []
-        combined_val_losses = []
-
-        combined_train_aucs = []
-        combined_val_aucs = []
+        history_path = 'models/model2_resnet152_history.json'
+        if os.path.exists(history_path):
+            import json
+            with open(history_path, 'r') as f:
+                epoch_history = json.load(f)
+            print(f"✅ Epoch history loaded: {len(epoch_history.get('train_loss', []))} epochs")
+            print(f"   Phases: {epoch_history.get('phase', [])[:3]}... (showing first 3)")
+        else:
+            print("⚠️ No epoch history found at:", history_path)
+            print("   Learning curves will not be plotted.")
+            epoch_history = {
+                "train_loss": [],
+                "val_loss": [],
+                "train_auc": [],
+                "val_auc": [],
+                "epochs": [],
+                "phase": []
+            }
         
         # ── Model already trained: load and evaluate ────────────────────────
         y_train = [label for _, label in image_datasets['train'].samples]
@@ -343,9 +410,7 @@ if __name__ == '__main__':
         
         log_path = start_terminal_log(resnet_run_name)
 
-        #print("\nFinding optimal threshold on validation set...")
-        #optimal_threshold, best_score = find_optimal_threshold(model_res152, val_dataloader, device)
-        optimal_threshold = 0.7
+        optimal_threshold = 0.98
 
         test_loss, test_auc, test_accuracy, all_preds, all_labels, all_preds_probs = test_with_threshold(
             model=model_res152,
@@ -390,40 +455,42 @@ if __name__ == '__main__':
                                     feature_names=['feature1', 'feature2'],
                                     save_path='pictures/plot_error_analysis_res152')
 
+        # ====================================================================
+        # NEW: Use epoch_history (even if empty) with the new parameter
+        # ====================================================================
         log_and_plot(
             run_name=resnet_run_name,
             model_type="ResNet152",
-
             accuracy=test_accuracy * 100,
             y_true=all_labels,
             y_pred=all_preds,
             y_prob=all_preds_probs,
-
             auc_score=test_auc,
             f1_score=f1,
             val_loss=best_val_loss,
             test_loss=test_loss,
-
-            epochs_trained=len(combined_train_losses),
+            epochs_trained=len(epoch_history.get("train_loss", [])) if epoch_history else 0,
             max_epochs=20,
-
             threshold=optimal_threshold,
-
-            train_losses=combined_train_losses,
-            val_losses=combined_val_losses,
-            train_aucs=combined_train_aucs,
-            val_aucs=combined_val_aucs,
-
+            # Pass the loaded epoch_history
+            epoch_history=epoch_history if epoch_history and epoch_history.get("train_loss") else None,
+            # Also pass individual lists for backward compatibility
+            train_losses=epoch_history.get("train_loss") if epoch_history else None,
+            val_losses=epoch_history.get("val_loss") if epoch_history else None,
+            train_aucs=epoch_history.get("train_auc") if epoch_history else None,
+            val_aucs=epoch_history.get("val_auc") if epoch_history else None,
             lr=1e-5,
             batch_size=32,
             optimizer="Adam",
             class_weighting=True,
             dropout_rate=0.4,
             pretrained=True,
-
             img_size=224,
             log_file=log_path,
             notes="Phase1 lr=1e-3 fc-only | Phase2 lr=1e-5 layer3+layer4+fc"
         )
     
+    # Optional: stop terminal logging if still active
+    stop_terminal_log()
+
     example_usage()

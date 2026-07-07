@@ -244,7 +244,6 @@ if not os.path.exists('models/model2.4_improved_cnn.pth'):
                  hp_notes="hu=32, lr=1e-3, class_weights=True",
                  notes="Improved CNN with class weights")
 
-if not os.path.exists('models/model2_resnet152.pth'):
-    os.system('python transfer_training_code/resnet152.py')
+os.system('python transfer_training_code/resnet152.py')
 
 example_usage()
