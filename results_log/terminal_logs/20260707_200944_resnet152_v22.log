@@ -1,0 +1,71 @@
+======================================================================
+  RUN : resnet152 v22
+  DATE: *
+  HOST: erfan
+  GPU : *
+  PY  : 3.13.12
+  FW  : PyTorch  2.9.1+cu126
+======================================================================
+
+
+==================================================
+FALSE POSITIVE ANALYSIS
+==================================================
+Number of False Positives: 38
+Min Probability : 0.9836
+Mean Probability: 0.9954
+Max Probability : 1.0000
+
+Top False Positive Probabilities:
+ 1. 1.0000
+ 2. 1.0000
+ 3. 1.0000
+ 4. 1.0000
+ 5. 1.0000
+ 6. 1.0000
+ 7. 0.9999
+ 8. 0.9999
+ 9. 0.9999
+10. 0.9999
+
+==================================================
+TEST RESULTS (Threshold = 0.98)
+==================================================
+Test Loss: 0.5689
+Test Accuracy: 0.9215
+Test AUC: 0.9752
+
+Detailed Classification Report:
+              precision    recall  f1-score   support
+
+      NORMAL       0.95      0.84      0.89       234
+   PNEUMONIA       0.91      0.97      0.94       390
+
+    accuracy                           0.92       624
+   macro avg       0.93      0.90      0.91       624
+weighted avg       0.92      0.92      0.92       624
+
+
+Confusion Matrix:
+[[196  38]
+ [ 11 379]]
+==================================================
+Class 0: 38/234 misclassified (16.2%)
+Class 1: 11/390 misclassified (2.8%)
+
+✅  Run #14 — 'resnet152 v22' saved.
+
+📊  Generating diagnostic plots for 'resnet152 v22' …
+   saved → results_log\plots\diagnostic_summary_resnet152_v22.png
+📊  Updating cross-run comparison chart …
+d:\github_projects\pneumonia_detection\results_tracker.py:810: UserWarning: Glyph 9733 (\N{BLACK STAR}) missing from font(s) Arial.
+  plt.tight_layout()
+d:\github_projects\pneumonia_detection\results_tracker.py:814: UserWarning: Glyph 9733 (\N{BLACK STAR}) missing from font(s) Arial.
+  fig.savefig(path, dpi=150, bbox_inches="tight")
+   saved → results_log\plots\comparison_all_runs.png
+C:\Users\ERFAN\AppData\Local\Programs\Python\Python313\Lib\tkinter\__init__.py:862: UserWarning: Glyph 9733 (\N{BLACK STAR}) missing from font(s) Arial.
+  func(*args)
+
+======================================================================
+  LOG CLOSED: 2026-07-07 20:10:13
+======================================================================
