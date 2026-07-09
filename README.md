@@ -16,28 +16,31 @@ A deep learning pipeline for detecting pneumonia in pediatric chest X-rays, buil
 - [Dataset](#dataset)
 - [Setup](#setup)
 - [Usage](#usage)
+- [Improving Model Focus with Border Cropping](#improving-model-focus-with-border-cropping)
 - [Explainability (GradCAM)](#explainability-gradcam)
 - [Experiment Tracking](#experiment-tracking)
 - [Web Demo](#web-demo)
 - [Key Engineering Decisions](#key-engineering-decisions)
+- [Limitations](#limitations)
+- [Future Work](#future-work)
 - [License](#license)
 
 ---
 
 ## Overview
 
-Chest X-rays are one of the most common tools for diagnosing pneumonia, but manual interpretation is time-consuming and prone to inter-observer variability. This project explores whether a CNN can flag pneumonia cases reliably enough to be useful as a triage aid, while being transparent about *where* the model is looking via GradCAM.
+Chest X-rays are one of the most common tools for diagnosing pneumonia, but manual interpretation is time-consuming and prone to inter-observer variability. This project explores whether deep convolutional neural networks can reliably detect pneumonia in pediatric chest X-rays while providing interpretable predictions through Grad-CAM explainability. The goal is to investigate an end-to-end deep learning pipeline, from training and evaluation to explainability and deployment, rather than to produce a clinically deployable diagnostic system.
 
 Two architectures were trained and compared:
 
 - **Custom CNN** (`module.py::improved_cnn`) — a 4-block convolutional network built from scratch (BatchNorm + Dropout + global average pooling), trained end-to-end on grayscale X-rays.
 - **ResNet152 (transfer learning)** (`transfer_training_code/resnet152.py`) — an ImageNet-pretrained ResNet152 with a custom classification head, fine-tuned in two phases (FC-only, then FC + `layer3` + `layer4`).
 
-Both models are trained with class-weighted loss to handle the dataset's class imbalance, and evaluated using a **clinically-tuned decision threshold** (optimized on the validation set for high precision) rather than the naive 0.5 cutoff.
+Both models are trained using **class-weighted CrossEntropyLoss** to compensate for the dataset's class imbalance (approximately a 3:1 pneumonia-to-normal ratio in the training set). They are evaluated using a **decision threshold optimized for high precision on the validation set**, rather than the default 0.5 probability cutoff.
 
 ## Results
 
-Final numbers below are from the best ResNet152 run (`resnet152 v22`) on the held-out test set, at the tuned clinical threshold.
+Final numbers below are from the best ResNet152 run (`resnet152 v22`) on the held-out test set, using the validation-optimized decision threshold.
 
 | Metric | Score |
 |---|---|
@@ -67,7 +70,7 @@ The model prioritizes **sensitivity** — catching true pneumonia cases — over
 
 ![Diagnostic Summary](results_log/plots/diagnostic_summary_resnet152_v2.png)
 
-A note on the train/val vs. test loss gap: best validation loss was ~0.08 while test loss came in around ~0.57 with AUC staying high. This isn't a bug — Kaggle's `test` split for this dataset is a separately curated, differently-distributed set of images from `train`/`val`, a known quirk of this dataset. The 0.98 clinical threshold is intentionally set high for comparability with published benchmarks on this exact split.
+A note on the train/val vs. test loss gap: best validation loss was ~0.08 while test loss came in around ~0.57 with AUC staying high. This isn't a bug — Kaggle's `test` split for this dataset is a separately curated, differently-distributed set of images from `train`/`val`, a known quirk of this dataset. The final inference threshold (0.98) is intentionally set high to prioritize precision during evaluation while remaining comparable with published benchmarks on this dataset.
 
 ## Project Structure
 
@@ -96,7 +99,7 @@ pneu/
 
 ## Dataset
 
-Trained on the [Kermany/Mooney Chest X-Ray Pneumonia dataset](https://www.kaggle.com/datasets/paultimothymooney/chest-xray-pneumonia) (Kaggle), reorganized into `train` / `val` / `test` splits with two classes: `NORMAL` and `PNEUMONIA`. The dataset is imbalanced toward pneumonia cases, which is handled via `sklearn.utils.class_weight.compute_class_weight('balanced', ...)` fed into a weighted `CrossEntropyLoss`.
+Trained on the [Kermany/Mooney Chest X-Ray Pneumonia dataset](https://www.kaggle.com/datasets/paultimothymooney/chest-xray-pneumonia) (Kaggle), reorganized into `train` / `val` / `test` splits with two classes: `NORMAL` and `PNEUMONIA`. The dataset is imbalanced toward pneumonia cases (approximately a 3:1 pneumonia-to-normal ratio in the training set). To compensate for this imbalance without altering the original data distribution, class weights are computed using `sklearn.utils.class_weight.compute_class_weight('balanced', ...)` and passed to `CrossEntropyLoss` during training.
 
 Preprocessing includes a custom `CropBorders` transform (`module.py`) that trims empty/black scanner borders before resizing, so the model isn't learning from dead space around the actual X-ray.
 
@@ -134,7 +137,15 @@ Batch folder with CSV output:
 python demo.py --model resnet152 --folder path/to/images/ --output results.csv
 ```
 
-`demo.py` is decoupled from the experiment-tracking system — it's a fast, standalone path for running a trained checkpoint against new images, applying the tuned clinical threshold (0.98) to the raw softmax probability.
+`demo.py` is decoupled from the experiment-tracking system — it's a fast, standalone path for running a trained checkpoint against new images, applying the validation-optimized threshold (0.98) to the raw softmax probability.
+
+## Improving Model Focus with Border Cropping
+
+Early Grad-CAM experiments revealed that the model was frequently attending to image borders and corner artifacts rather than the lung fields. This suggested that high-contrast scanner borders were acting as spurious features during training.
+
+To address this, I implemented a custom `CropBorders` preprocessing transform that removes a small percentage of the image edges before resizing. After introducing this preprocessing step, Grad-CAM visualizations shifted their attention toward the lung fields, and the resulting model achieved noticeably better classification performance.
+
+This demonstrates how explainability was used not only to visualize predictions, but also to diagnose and improve the preprocessing pipeline.
 
 ## Explainability (GradCAM)
 
@@ -155,9 +166,9 @@ Example GradCAM output from a real inference run via `demo.py --gradcam`:
 
 ## Experiment Tracking
 
-`results_tracker.py` is a self-contained experiment logging system built up over many training runs:
+`results_tracker.py` is a self-contained experiment logging system developed over many training iterations:
 
-- Structured per-run logging to `results_log/runs.json` — hyperparameters, environment metadata (auto-captured), and a full metrics suite: accuracy, AUC, F1, MCC, ECE (expected calibration error), per-class precision/recall/F1, and precision at fixed clinical recall thresholds (P@R90 / P@R95).
+- Structured per-run logging to `results_log/runs.json` — hyperparameters, environment metadata (auto-captured), and a full metrics suite: accuracy, AUC, F1, MCC, ECE (expected calibration error), per-class precision/recall/F1, and precision at fixed recall targets (P@R90 / P@R95).
 - Automatic diagnostic plot grids per run (loss/AUC curves by phase, calibration curve, confusion matrix, etc.) saved to `results_log/plots/`.
 - `TerminalLogger` — tees all stdout/stderr during training to a timestamped `.log` file in `results_log/terminal_logs/`, so full training output is preserved per run.
 
@@ -169,7 +180,7 @@ The [live Streamlit demo](https://pneumoniadetection-demo.streamlit.app/) (`stre
 
 1. Downloads the trained ResNet152 checkpoint from a public Hugging Face model repo (`erfanna/pneumonia-resnet152`) at startup via `hf_hub_download`, and caches it with `st.cache_resource`.
 2. Reuses the actual project code — `CropBorders` from `module.py`, `GradCAM`/`overlay_heatmap` from `Gradcam.py` — rather than reimplementing preprocessing, so the deployed demo stays in sync with the training/eval pipeline.
-3. Runs inference on an uploaded X-ray and displays the prediction alongside a GradCAM overlay, with the same 0.98 clinical threshold used everywhere else in the project.
+3. Runs inference on an uploaded X-ray and displays the prediction alongside a GradCAM overlay, with the same validation-optimized threshold (0.98) used throughout the project.
 
 Model weights are hosted on Hugging Face rather than committed to the repo to keep the git history lightweight.
 
@@ -180,8 +191,25 @@ A few notable fixes and decisions from the project's development, for anyone rea
 - **Checkpoint path consistency**: training/loading logic in `resnet152.py` checks for and saves to `models/model2_resnet152.pth` consistently — an earlier mismatch between the existence-check path and the actual save/load path caused the script to silently re-enter training mode instead of loading the existing model.
 - **Preprocessing parity**: `demo.py` and `streamlit_app/app.py` both replicate the exact `test`-time transform from `resnet152.py` (`CropBorders(threshold=10, crop_percent=0.1, output_size=(224, 224))`), not the looser defaults used elsewhere in earlier GradCAM exploration — this ensures inference-time input distribution matches what the model was actually evaluated on.
 - **Class imbalance**: handled via computed class weights fed into `CrossEntropyLoss`, rather than oversampling/undersampling.
-- **Threshold tuning over default 0.5**: `find_optimal_threshold()` searches for a threshold that maximizes precision on the validation set; the final clinical threshold (0.98) is deliberately conservative to minimize false positives at high recall.
+- **Threshold tuning over the default 0.5**: `find_optimal_threshold()` searches for a threshold that maximizes precision on the validation set; the final threshold (0.98) is deliberately conservative to minimize false positives while maintaining high recall.
 - **Two-phase transfer learning**: ResNet152 is first fine-tuned with only the FC head unfrozen (lr=1e-3), then a second phase unfreezes `layer3`+`layer4` at a much lower learning rate (1e-5) to adapt deeper features without catastrophic forgetting of ImageNet representations.
+
+## Limitations
+
+Although the model achieves strong performance on this benchmark dataset, several limitations should be considered:
+
+- The model was trained and evaluated on a single public pediatric chest X-ray dataset and has not been validated on external clinical datasets.
+- The dataset contains pediatric patients only, so performance on adult chest X-rays is unknown.
+- Kaggle's predefined test split differs noticeably from the training and validation distributions, which contributes to the higher test loss despite maintaining a high ROC-AUC.
+- The final project focuses on a single transfer-learning architecture (ResNet152). Other architectures such as DenseNet, EfficientNet, ConvNeXt, or Vision Transformers may produce different results.
+- This project is intended for educational and research purposes only and should not be used for clinical diagnosis without extensive real-world validation.
+
+## Future Work
+
+Potential directions for extending this project include:
+
+- Benchmarking against DenseNet121, EfficientNet, ConvNeXt, and Vision Transformers.
+- Evaluating on external chest X-ray datasets to assess generalization.
 
 ## License
 
